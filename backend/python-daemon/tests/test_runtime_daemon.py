@@ -276,6 +276,84 @@ class RuntimeDaemonTests(unittest.TestCase):
     def test_operator_readme_exists(self):
         self.assertTrue((Path.cwd().parent / "README.md").exists())
 
+    def test_runtime_config_defaults_embedding_model_to_correct_lm_studio_key(self):
+        config = RuntimeConfig.from_env({})
+        self.assertEqual(config.embedding_model, "text-embedding-nomic-embed-text-v1.5")
+
+
+class FakeResponseForLMStudio:
+    def __init__(self, payload):
+        self.payload = payload
+        self.status_code = 200
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.payload
+
+
+class LMStudioManagerTests(unittest.TestCase):
+    def test_list_models_accepts_models_and_data_keys(self):
+        calls = []
+        def get(url, headers=None, timeout=None):
+            calls.append((url, headers))
+            return FakeResponseForLMStudio({"models": [{"key": "model1", "type": "embedding", "state": "loaded"}]})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get)
+
+        models = manager.list_models()
+
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0].key, "model1")
+        self.assertEqual(models[0].type, "embedding")
+
+    def test_ensure_embedding_model_loaded_rejects_non_embedding_model(self):
+        def get(url, **kwargs):
+            return FakeResponseForLMStudio({"models": [{"key": "chat-model", "type": "chat"}]})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig, LMStudioManagerError
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get)
+
+        with self.assertRaises(LMStudioManagerError) as cm:
+            manager.ensure_embedding_model_loaded("chat-model")
+
+        self.assertIn("not an embedding model", str(cm.exception))
+
+    def test_ensure_embedding_model_loaded_loads_unloaded_model(self):
+        get_calls = []
+        post_calls = []
+        def get(url, **kwargs):
+            get_calls.append(url)
+            return FakeResponseForLMStudio({"models": [{"key": "embed-model", "type": "embedding", "state": "unloaded"}]})
+
+        def post(url, json=None, **kwargs):
+            post_calls.append((url, json))
+            return FakeResponseForLMStudio({})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get, http_post=post)
+
+        manager.ensure_embedding_model_loaded("embed-model")
+
+        self.assertEqual(len(post_calls), 1)
+        self.assertEqual(post_calls[0][0], "http://127.0.0.1:1234/api/v1/models/load")
+        self.assertEqual(post_calls[0][1], {"model": "embed-model"})
+
+    def test_401_from_list_models_gives_clear_token_error(self):
+        import requests
+        def get(url, **kwargs):
+            raise requests.HTTPError(response=type('Response', (), {'status_code': 401})())
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig, LMStudioManagerError
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get)
+
+        with self.assertRaises(LMStudioManagerError) as cm:
+            manager.list_models()
+
+        self.assertIn("set ALETHEIA_LM_STUDIO_API_TOKEN", str(cm.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

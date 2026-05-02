@@ -131,7 +131,7 @@ class ProcessorAndToolTests(unittest.TestCase):
             source = root / "app.ts"
             source.write_text("export const value = 1;\n", encoding="utf-8")
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponseForTools({"data": [{"embedding": [0.1]}]}),
                 chroma_client=FakeChromaClientForTools(),
             )
@@ -200,15 +200,15 @@ if __name__ == "__main__":
 
 
 class FakeResponseForTools:
-    def __init__(self, payload):
+    def __init__(self, payload, status_code=200):
         self.payload = payload
+        self.status_code = status_code
 
     def raise_for_status(self):
         return None
 
     def json(self):
         return self.payload
-
 
 class FakeChromaClientForTools:
     def get_or_create_collection(self, name):

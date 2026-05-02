@@ -11,6 +11,7 @@ from orchestrator.queue_repo import QueueRepository
 class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
+        self.status_code = 200
 
     def raise_for_status(self):
         return None
@@ -101,12 +102,16 @@ class ChromaAndIngestTests(unittest.TestCase):
     def test_embedding_payload_uses_lm_studio_model_and_nomic_prefix(self):
         calls = []
 
-        def post(url, json, timeout):
-            calls.append((url, json, timeout))
+        def post(url, json, headers=None, timeout=None):
+            calls.append((url, json, headers, timeout))
             return FakeResponse({"data": [{"embedding": [1, 2, 3]}]})
 
         manager = ChromaManager(
-            ChromaConfig(chroma_path=Path("unused"), lm_studio_base_url="http://lm/v1"),
+            ChromaConfig(
+                chroma_path=Path("unused"),
+                lm_studio_base_url="http://lm/v1",
+                auto_load_embedding_model=False,
+            ),
             http_post=post,
             chroma_client=FakeChromaClient(),
         )
@@ -118,7 +123,7 @@ class ChromaAndIngestTests(unittest.TestCase):
     def test_search_enforces_project_scope_hash_where_filter(self):
         fake_client = FakeChromaClient()
         manager = ChromaManager(
-            ChromaConfig(chroma_path=Path("unused")),
+            ChromaConfig(chroma_path=Path("unused"), auto_load_embedding_model=False),
             http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.1]}]}),
             chroma_client=fake_client,
         )
@@ -138,7 +143,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("def alpha():\n    return 1\n", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2, 0.3]}]}),
                 chroma_client=fake_client,
             )
@@ -165,7 +170,7 @@ class ChromaAndIngestTests(unittest.TestCase):
 
             for project_id in ("project-a", "project-b"):
                 manager = ChromaManager(
-                    ChromaConfig(chroma_path=root / f"chroma-{project_id}"),
+                    ChromaConfig(chroma_path=root / f"chroma-{project_id}", auto_load_embedding_model=False),
                     http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                     chroma_client=FakeChromaClient(),
                 )
@@ -181,7 +186,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("old content that is long enough", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -208,7 +213,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("def broken(:\n    pass\n", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -230,7 +235,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("same content", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -253,7 +258,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("old content", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -280,7 +285,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             second.write_text("beta", encoding="utf-8")
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -303,14 +308,14 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("rebuild me", encoding="utf-8")
             repo = QueueRepository(root / "queue.db", root / "control.db")
             first = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.4]}]}),
                 chroma_client=FakeChromaClient(),
             )
             service = IngestTargetService(repo, first, allowed_roots=(root,))
             service.ingest_target("project-a", str(source))
             rebuilt = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma2"),
+                ChromaConfig(chroma_path=root / "chroma2", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.5]}]}),
                 chroma_client=FakeChromaClient(),
             )
@@ -325,7 +330,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             root = Path(tmp)
             fake_client = FakeChromaClient()
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
                 chroma_client=fake_client,
             )
@@ -359,7 +364,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("keep this chunk", encoding="utf-8")
             repo = QueueRepository(root / "queue.db", root / "control.db")
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.6]}]}),
                 chroma_client=BrokenUpsertClient(),
             )
@@ -397,7 +402,7 @@ class ChromaAndIngestTests(unittest.TestCase):
             source.write_text("restore me", encoding="utf-8")
             repo = QueueRepository(root / "queue.db", root / "control.db")
             manager = ChromaManager(
-                ChromaConfig(chroma_path=root / "chroma"),
+                ChromaConfig(chroma_path=root / "chroma", auto_load_embedding_model=False),
                 http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.7]}]}),
                 chroma_client=BrokenOnceClient(),
             )
@@ -421,13 +426,80 @@ class ChromaAndIngestTests(unittest.TestCase):
                 self.collection = BrokenCollection()
 
         manager = ChromaManager(
-            ChromaConfig(chroma_path=Path("unused")),
+            ChromaConfig(chroma_path=Path("unused"), auto_load_embedding_model=False),
             http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.1]}]}),
             chroma_client=BrokenClient(),
         )
 
         with self.assertRaises(ChromaAdapterError):
             manager.search("project-a", "hello")
+
+
+class FakeLMStudioManager:
+    def __init__(self):
+        self.ensure_calls = []
+
+    def ensure_embedding_model_loaded(self, model_key: str) -> None:
+        self.ensure_calls.append(model_key)
+
+
+class LMStudioManagerTests(unittest.TestCase):
+    def test_chroma_manager_calls_ensure_embedding_model_loaded_before_embedding(self):
+        fake_manager = FakeLMStudioManager()
+        manager = ChromaManager(
+            ChromaConfig(chroma_path=Path("unused"), auto_load_embedding_model=True),
+            http_post=lambda **_: FakeResponse({"data": [{"embedding": [1, 2, 3]}]}),
+            chroma_client=FakeChromaClient(),
+            lm_studio_manager=fake_manager,
+        )
+
+        result = manager.embed_text("test")
+
+        self.assertEqual(result, [1.0, 2.0, 3.0])
+        self.assertEqual(fake_manager.ensure_calls, ["text-embedding-nomic-embed-text-v1.5"])
+
+    def test_chroma_manager_includes_auth_header_when_token_configured(self):
+        calls = []
+        def post(url, json, headers=None, timeout=None):
+            calls.append((url, json, headers))
+            return FakeResponse({"data": [{"embedding": [1, 2, 3]}]})
+
+        manager = ChromaManager(
+            ChromaConfig(
+                chroma_path=Path("unused"),
+                lm_studio_api_token="test-token",
+                auto_load_embedding_model=False,
+            ),
+            http_post=post,
+            chroma_client=FakeChromaClient(),
+        )
+
+        result = manager.embed_text("test")
+
+        self.assertEqual(result, [1.0, 2.0, 3.0])
+        self.assertEqual(calls[0][2]["Authorization"], "Bearer test-token")
+
+    def test_chroma_manager_raises_clear_error_on_401_from_embeddings(self):
+        def post(url, json, headers=None, timeout=None):
+            class Fake401Response:
+                status_code = 401
+                def raise_for_status(self):
+                    raise Exception("401 Unauthorized")
+                def json(self):
+                    return {}
+            return Fake401Response()
+
+        manager = ChromaManager(
+            ChromaConfig(chroma_path=Path("unused"), auto_load_embedding_model=False),
+            http_post=post,
+            chroma_client=FakeChromaClient(),
+        )
+
+        with self.assertRaises(ChromaAdapterError) as cm:
+            manager.embed_text("test")
+
+        self.assertIn("LM Studio embeddings endpoint rejected request", str(cm.exception))
+        self.assertIn("set ALETHEIA_LM_STUDIO_API_TOKEN", str(cm.exception))
 
 
 if __name__ == "__main__":

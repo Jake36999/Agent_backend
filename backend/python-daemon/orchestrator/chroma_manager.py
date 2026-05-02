@@ -10,6 +10,8 @@ from typing import Any, Callable
 import chromadb
 import requests
 
+from .lm_studio_manager import LMStudioManager, LMStudioManagerConfig, LMStudioManagerError
+
 
 class ChromaAdapterError(ValueError):
     pass
@@ -20,9 +22,12 @@ class ChromaConfig:
     chroma_path: Path
     collection_name: str = "aletheia_chunks"
     lm_studio_base_url: str = "http://localhost:1234/v1"
-    embedding_model: str = "nomic-ai/nomic-embed-text-v1.5-GGUF"
+    lm_studio_api_base_url: str = "http://127.0.0.1:1234/api/v1"
+    lm_studio_api_token: str | None = None
+    embedding_model: str = "text-embedding-nomic-embed-text-v1.5"
     nomic_prefix: str = "search_document: "
     request_timeout_seconds: float = 30.0
+    auto_load_embedding_model: bool = True
 
 
 class ChromaManager:
@@ -32,12 +37,23 @@ class ChromaManager:
         *,
         http_post: Callable[..., Any] = requests.post,
         chroma_client: Any | None = None,
+        lm_studio_manager: LMStudioManager | None = None,
     ) -> None:
         self.config = config
         self.http_post = http_post
         self.client = chroma_client or chromadb.PersistentClient(path=str(config.chroma_path))
         self.collection = self.client.get_or_create_collection(name=config.collection_name)
         self._active_scope_hash: str | None = None
+        if config.auto_load_embedding_model:
+            self.lm_studio_manager = lm_studio_manager or LMStudioManager(
+                LMStudioManagerConfig(
+                    api_base_url=config.lm_studio_api_base_url,
+                    api_token=config.lm_studio_api_token,
+                    request_timeout_seconds=config.request_timeout_seconds,
+                )
+            )
+        else:
+            self.lm_studio_manager = None
 
     def project_scope_hash(self, project_id: str, params: dict[str, Any] | None = None) -> str:
         if not project_id:
@@ -57,18 +73,33 @@ class ChromaManager:
     def embed_text(self, text: str) -> list[float]:
         if not text or not text.strip():
             raise ChromaAdapterError("cannot embed empty text")
+        if self.lm_studio_manager is not None:
+            try:
+                self.lm_studio_manager.ensure_embedding_model_loaded(self.config.embedding_model)
+            except LMStudioManagerError as exc:
+                raise ChromaAdapterError(f"LM Studio embedding model readiness failed: {exc}") from exc
         payload = {
             "input": f"{self.config.nomic_prefix}{text}",
             "model": self.config.embedding_model,
         }
+        headers = {"Content-Type": "application/json"}
+        if self.config.lm_studio_api_token:
+            headers["Authorization"] = f"Bearer {self.config.lm_studio_api_token}"
         try:
             response = self.http_post(
                 url=f"{self.config.lm_studio_base_url.rstrip('/')}/embeddings",
                 json=payload,
+                headers=headers,
                 timeout=self.config.request_timeout_seconds,
             )
+            if response.status_code == 401:
+                raise ChromaAdapterError(
+                    "LM Studio embeddings endpoint rejected request; set ALETHEIA_LM_STUDIO_API_TOKEN or disable LM Studio API auth"
+                )
             response.raise_for_status()
             embedding = response.json()["data"][0]["embedding"]
+        except ChromaAdapterError:
+            raise
         except Exception as exc:
             raise ChromaAdapterError(f"embedding generation failed: {exc}") from exc
         if not isinstance(embedding, list) or not embedding:

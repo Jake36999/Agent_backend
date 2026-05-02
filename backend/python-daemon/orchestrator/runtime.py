@@ -60,7 +60,10 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         ChromaConfig(
             chroma_path=config.chroma_path,
             lm_studio_base_url=config.lm_studio_base_url,
+            lm_studio_api_base_url=config.lm_studio_api_base_url,
+            lm_studio_api_token=config.lm_studio_api_token,
             embedding_model=config.embedding_model,
+            auto_load_embedding_model=config.auto_load_embedding_model,
         )
     )
     ingest = IngestTargetService(repo, chroma, allowed_roots=config.allowed_roots)

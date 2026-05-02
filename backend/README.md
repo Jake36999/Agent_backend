@@ -45,12 +45,26 @@ The Node MCP gateway remains the generic strict stdio gateway, while the FastMCP
 
 The Node process validates public tool schemas and forwards tool calls with a per-request HMAC auth envelope.
 
-## LM Studio And Chroma
+## LM Studio embedding model readiness
 
-- LM Studio must expose an OpenAI-compatible embeddings endpoint at `ALETHEIA_LM_STUDIO_BASE_URL`.
-- Embeddings use `ALETHEIA_EMBEDDING_MODEL` and the Nomic `search_document:` prefix.
-- Chroma data lives under `ALETHEIA_CHROMA_PATH`.
-- SQLite keeps the rebuild manifest; Chroma is a rebuildable vector index.
+The daemon automatically manages LM Studio embedding model loading:
+
+- **Embedding model**: `text-embedding-nomic-embed-text-v1.5` (default)
+- **Chat model**: Can remain loaded separately (e.g., DeepSeek/Qwen)
+- **Auto-loading**: Enabled by default; checks and loads embedding model before embedding requests
+- **API endpoints**: Uses `/api/v1/models` for inspection/loading, `/v1/embeddings` for generation
+
+Environment variables:
+
+```powershell
+$env:ALETHEIA_EMBEDDING_MODEL="text-embedding-nomic-embed-text-v1.5"
+$env:ALETHEIA_LM_STUDIO_BASE_URL="http://127.0.0.1:1234/v1"
+$env:ALETHEIA_LM_STUDIO_API_BASE_URL="http://127.0.0.1:1234/api/v1"
+$env:ALETHEIA_LM_STUDIO_API_TOKEN=""  # optional for auth
+$env:ALETHEIA_AUTO_LOAD_EMBEDDING_MODEL="true"
+```
+
+The daemon will attempt to load the embedding model if not already loaded, providing clear errors for auth/model issues.
 
 ## Admin CLI
 
