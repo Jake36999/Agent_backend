@@ -1,0 +1,194 @@
+__pycache__/
+*.py[cod]
+node_modules/
+.cache/
+.venv/
+venv/
+.env
+.env.*
+.aletheia_state/
+chroma/
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+# Aletheia backend / Python / Node local hygiene
+
+# -----------------------------
+# Secrets and local environment
+# -----------------------------
+.env
+.env.*
+!.env.example
+*.env
+*.local
+*.secret
+*.secrets
+secrets.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# PowerShell/local operator scratch
+*.ps1.local
+*.psm1.local
+
+# -----------------------------
+# Python caches and build output
+# -----------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+*.egg-info/
+build/
+dist/
+site/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.venv_*/
+.venv_semantic/
+.venv_training/
+
+# Python notebooks/checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints*
+
+# -----------------------------
+# Node caches and dependencies
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.yarn/
+.pnpm-store/
+.eslintcache
+
+# -----------------------------
+# Aletheia runtime state
+# -----------------------------
+.aletheia_state/
+**/.aletheia_state/
+chroma/
+**/chroma/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+queue.db
+control.db
+
+# Runtime logs and outputs
+logs/
+*.log
+*.log.*
+python_output.txt
+node_output.txt
+runtime_output.txt
+*.pid
+*.sock
+*.pipe
+
+# Dead-letter / run artifacts
+runs/
+output/
+failed_workspaces/
+unsloth_compiled_cache/
+
+# -----------------------------
+# Generated bundles / extraction artifacts
+# -----------------------------
+*_bundle*.yaml
+*_bundle*.yml
+*_bundle*.py
+*_Extraction.yaml
+*_Extraction.yml
+*Extraction_Bundle*.py
+*Extraction_Bundle*.yaml
+current_backend_runtime_review_*.py
+current_backend_runtime_review_*.yaml
+Post_Patch_Verification_Slice.py
+backend_bundle_*.py
+backend_bundle_*.yaml
+file_map.csv
+filtered_tool_assist_map*.csv
+Explain_*.yaml
+*.jsonl
+
+# -----------------------------
+# Large/binary local artifacts
+# -----------------------------
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.tiff
+*.ico
+*.zip
+*.tar
+*.tgz
+*.gz
+*.bz2
+*.7z
+*.rar
+*.h5
+*.hdf5
+*.parquet
+
+# -----------------------------
+# Editor and OS files
+# -----------------------------
+.vscode/*
+!.vscode/settings.example.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# -----------------------------
+# GitHub/Copilot/agent scratch
+# -----------------------------
+.github/copilot-chat/
+GitHub.copilot-chat/
+memories/
+plan.md
+plan_new.md
+implementation_summary.md
+
+# -----------------------------
+# Keep source and tests trackable
+# -----------------------------
+!README.md
+!backend/README.md
+!backend/python-daemon/pyproject.toml
+!backend/node-mcp/package.json
+!backend/**/*.py
+!backend/**/*.mjs
+!backend/**/*.json
+!backend/**/*.toml
