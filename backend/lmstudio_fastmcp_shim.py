@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import socket
+import time
+import traceback
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -11,26 +13,38 @@ mcp = FastMCP("Aletheia_Orchestrator_Shim")
 
 BRIDGE_HOST = os.environ.get("ALETHEIA_BRIDGE_HOST", "127.0.0.1")
 BRIDGE_PORT = int(os.environ.get("ALETHEIA_BRIDGE_PORT", "8765"))
-BRIDGE_TIMEOUT_SECONDS = float(os.environ.get("ALETHEIA_BRIDGE_TIMEOUT_SECONDS", "30"))
+BRIDGE_TIMEOUT_SECONDS = float(os.environ.get("ALETHEIA_BRIDGE_TIMEOUT_SECONDS", "180"))
+MAX_RESPONSE_BYTES = int(os.environ.get("ALETHEIA_SHIM_MAX_RESPONSE_BYTES", "25000000"))
 
 
 class BridgeCallError(RuntimeError):
-    """Raised when the local Aletheia daemon bridge rejects or fails a request."""
+    """Raised internally when the local Aletheia daemon bridge rejects or fails a request."""
+
+
+def as_pretty_json(value: Any) -> str:
+    return json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True)
+
+
+def error_payload(code: str, message: str, *, details: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "ok": False,
+        "error": code,
+        "message": str(message),
+        "bridge": {
+            "host": BRIDGE_HOST,
+            "port": BRIDGE_PORT,
+            "timeout_seconds": BRIDGE_TIMEOUT_SECONDS,
+        },
+    }
+    if details:
+        payload["details"] = details
+    return payload
 
 
 def call_bridge(method: str, params: dict[str, Any]) -> dict[str, Any]:
-    """
-    Call the local Aletheia Python daemon JSON-RPC bridge.
-
-    This shim intentionally uses the unauthenticated local bridge path.
-    Run the daemon without ALETHEIA_BRIDGE_SECRET while using this version.
-
-    Expected topology:
-      LM Studio -> this FastMCP stdio shim -> 127.0.0.1:8765 -> Aletheia daemon
-    """
     request = {
         "jsonrpc": "2.0",
-        "id": 1,
+        "id": int(time.time() * 1000),
         "method": method,
         "params": params,
     }
@@ -40,17 +54,27 @@ def call_bridge(method: str, params: dict[str, Any]) -> dict[str, Any]:
             (BRIDGE_HOST, BRIDGE_PORT),
             timeout=BRIDGE_TIMEOUT_SECONDS,
         ) as sock:
+            sock.settimeout(BRIDGE_TIMEOUT_SECONDS)
             payload = json.dumps(request, separators=(",", ":")) + "\n"
             sock.sendall(payload.encode("utf-8"))
 
             chunks: list[bytes] = []
+            total = 0
             while True:
                 data = sock.recv(65536)
                 if not data:
                     break
                 chunks.append(data)
+                total += len(data)
+
+                if total > MAX_RESPONSE_BYTES:
+                    raise BridgeCallError(
+                        f"Aletheia bridge response exceeded {MAX_RESPONSE_BYTES} bytes"
+                    )
+
                 if b"\n" in data:
                     break
+
     except OSError as exc:
         raise BridgeCallError(
             f"Could not connect to Aletheia bridge at {BRIDGE_HOST}:{BRIDGE_PORT}: {exc}"
@@ -63,35 +87,42 @@ def call_bridge(method: str, params: dict[str, Any]) -> dict[str, Any]:
     try:
         response = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise BridgeCallError(f"Aletheia bridge returned invalid JSON: {raw[:500]}") from exc
+        raise BridgeCallError(f"Aletheia bridge returned invalid JSON: {raw[:1000]}") from exc
 
     if "error" in response:
-        raise BridgeCallError(response["error"])
+        raise BridgeCallError(as_pretty_json(response["error"]))
 
     result = response.get("result", {})
     if not isinstance(result, dict):
-        return {"result": result}
+        return {"ok": True, "result": result}
     return result
 
 
 def call_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    """
-    Forward an MCP tool call to the Aletheia daemon.
-
-    The Python bridge expects params.toolName, not params.tool.
-    It also accepts params.name, but toolName matches the backend test contract.
-    """
-    return call_bridge(
-        "tools.call",
-        {
-            "toolName": tool_name,
-            "args": args,
-        },
-    )
-
-
-def as_pretty_json(value: Any) -> str:
-    return json.dumps(value, indent=2, ensure_ascii=False)
+    try:
+        return call_bridge(
+            "tools.call",
+            {
+                "toolName": tool_name,
+                "args": args,
+            },
+        )
+    except BridgeCallError as exc:
+        return error_payload(
+            "bridge_call_failed",
+            str(exc),
+            details={"tool_name": tool_name, "args": args},
+        )
+    except Exception as exc:
+        return error_payload(
+            "shim_unhandled_exception",
+            str(exc),
+            details={
+                "tool_name": tool_name,
+                "args": args,
+                "traceback": traceback.format_exc(limit=5),
+            },
+        )
 
 
 @mcp.tool()
@@ -101,11 +132,6 @@ def mcp_scout_workspace(
     max_files: int = 500,
     include_summaries: bool = True,
 ) -> str:
-    """
-    Inspect a workspace without indexing vectors.
-
-    Use this before ingestion to confirm the path, skipped-file policy, and project shape.
-    """
     result = call_tool(
         "mcp_scout_workspace",
         {
@@ -125,9 +151,6 @@ def mcp_ingest_target(
     mime_type: str | None = None,
     force_reindex: bool = False,
 ) -> str:
-    """
-    Index one file or directory into the Aletheia SQLite manifest and Chroma vector store.
-    """
     args: dict[str, Any] = {
         "project_id": project_id,
         "absolute_path": absolute_path,
@@ -142,9 +165,6 @@ def mcp_ingest_target(
 
 @mcp.tool()
 def mcp_semantic_search(project_id: str, query: str, k: int = 8) -> str:
-    """
-    Search indexed semantic memory for a project.
-    """
     result = call_tool(
         "mcp_semantic_search",
         {
@@ -162,9 +182,6 @@ def mcp_verify_integrity(
     expected_sha256: str,
     expected_metadata_hash: str,
 ) -> str:
-    """
-    Verify file content and metadata hashes.
-    """
     result = call_tool(
         "mcp_verify_integrity",
         {
@@ -182,9 +199,6 @@ def mcp_extract_image(
     page: int | None = None,
     region: dict[str, int] | None = None,
 ) -> str:
-    """
-    Extract text from an image or non-selectable document region through the configured OCR provider.
-    """
     args: dict[str, Any] = {"absolute_path": absolute_path}
     if page is not None:
         args["page"] = page
