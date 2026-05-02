@@ -57,8 +57,38 @@ class ShellAdapter:
         return rc, stdout, stderr
 
     def sync_run(self, spec: CommandSpec) -> tuple[int, str, str]:
-        import asyncio
-        return asyncio.run(self.run(spec))
+        self._validate(spec)
+        if self.runner is None:
+            rc, stdout_b, stderr_b = self._run_subprocess_sync(spec)
+        else:
+            import asyncio
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                rc, stdout_b, stderr_b = asyncio.run(self.runner(spec))
+            else:
+                raise ShellExecutionError("async runner cannot be used from a running event loop")
+        stdout = stdout_b.decode("utf-8", errors="replace")
+        stderr = stderr_b.decode("utf-8", errors="replace")
+        if rc not in spec.expected_exit_codes:
+            raise ShellExecutionError(f"unexpected exit code={rc}: {stderr}")
+        return rc, stdout, stderr
+
+    def _run_subprocess_sync(self, spec: CommandSpec) -> tuple[int, bytes, bytes]:
+        import subprocess
+        try:
+            completed = subprocess.run(
+                [spec.executable, *spec.args],
+                cwd=spec.cwd,
+                env=spec.env or None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=spec.timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ShellExecutionError("command timed out") from exc
+        return completed.returncode, completed.stdout, completed.stderr
 
     async def _run_subprocess(self, spec: CommandSpec) -> tuple[int, bytes, bytes]:
         proc = await asyncio.create_subprocess_exec(

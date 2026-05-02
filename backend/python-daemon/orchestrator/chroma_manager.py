@@ -133,8 +133,16 @@ class ChromaManager:
 
     def delete_chunks(self, *, project_id: str, absolute_path: str, project_params: dict[str, Any] | None = None) -> None:
         scope_hash = self.switch_project(project_id, project_params)
+        path = str(Path(absolute_path).resolve())
         try:
-            self.collection.delete(where={"project_scope_hash": scope_hash, "absolute_path": str(Path(absolute_path).resolve())})
+            self.collection.delete(
+                where={
+                    "$and": [
+                        {"project_scope_hash": {"$eq": scope_hash}},
+                        {"absolute_path": {"$eq": path}},
+                    ]
+                }
+            )
         except Exception as exc:
             raise ChromaAdapterError(f"ChromaDB delete failed: {exc}") from exc
 

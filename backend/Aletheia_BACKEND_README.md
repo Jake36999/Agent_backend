@@ -19,6 +19,7 @@ LLM / MCP client
 
 - **Python daemon**: authoritative runtime. Owns configuration, queue state, worker execution, migrations, process registry, HITL state, ingestion, semantic memory, OCR adapter wiring, and admin CLI internals.
 - **Node MCP gateway**: narrow stdio-facing MCP layer. Validates public tool schemas and forwards JSON-RPC calls to the Python daemon.
+- **LM Studio FastMCP shim**: current LM Studio integration uses `lmstudio_fastmcp_shim.py` into the Python daemon TCP bridge rather than the generic Node stdio gateway.
 - **SQLite**: canonical structural state and rebuild manifest. Stores tasks, leases, process registry, task events, files, chunks, ingestion runs, approvals, and dead letters.
 - **ChromaDB**: rebuildable vector index. Chroma is not the source of truth; SQLite chunk records are.
 - **LM Studio**: local OpenAI-compatible embedding endpoint.
@@ -82,6 +83,10 @@ The public Node MCP surface is intentionally limited to these tools:
 | `mcp_extract_image` | Optional OCR extraction through configured command provider. |
 
 `ReadOnlySqliteAdapter` remains internal. Do not expose a public SQLite MCP tool without a separate security review and a strict public contract.
+
+## Ingestion hygiene
+
+Avoid ingesting generated extraction bundles and directories such as `New project_bundle_*`, `*_bundle*.py`, or `*_bundle*.yaml` to prevent pollution of the semantic index.
 
 ## Security model
 

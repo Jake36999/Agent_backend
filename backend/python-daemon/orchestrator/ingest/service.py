@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import json
 from pathlib import Path
@@ -7,12 +8,36 @@ from typing import Any
 
 from ..chroma_manager import ChromaAdapterError, ChromaManager
 from ..queue_repo import QueueRepository
-from .processors import DocumentChunk, MetadataAdapter, PdfProcessorAdapter, SemanticSlicerAdapter, TextProcessorAdapter
+from .processors import (
+    DocumentChunk,
+    IngestProcessorError,
+    MetadataAdapter,
+    PdfProcessorAdapter,
+    SemanticSlicerAdapter,
+    TextProcessorAdapter,
+)
 
 
 class IngestTargetService:
     python_exts = {".py"}
-    ignored_directory_names = {".git", "__pycache__", "node_modules", ".venv", "venv", ".cache"}
+    ignored_directory_names = {
+        ".git",
+        "__pycache__",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".cache",
+        "output",
+        "runs",
+        "failed_workspaces",
+        "unsloth_compiled_cache",
+        ".venv_semantic",
+        ".venv_training",
+        ".mypy_cache",
+        ".pytest_cache",
+        "dist",
+        "build",
+    }
     ignored_file_suffixes = {
         ".db",
         ".sqlite",
@@ -31,6 +56,14 @@ class IngestTargetService:
         ".webp",
         ".parquet",
     }
+    ignored_file_patterns = (
+        "*_bundle*.py",
+        "*_bundle*.yaml",
+        "*_Extraction.*",
+        "agnostic_bundle*",
+        "Data_Processing_Efficiency_Audit*",
+        "DAG_Math_Logic_Extraction*",
+    )
 
     def __init__(
         self,
@@ -142,6 +175,27 @@ class IngestTargetService:
             raise ValueError(f"target does not exist: {target}")
         return resolved
 
+    def _ignored_file(self, path: Path) -> bool:
+        lower_name = path.name.lower()
+        normalized = path.as_posix()
+        return (
+            path.suffix.lower() in self.ignored_file_suffixes
+            or any(
+                fnmatch.fnmatch(path.name, pattern)
+                or fnmatch.fnmatch(normalized, pattern)
+                for pattern in self.ignored_file_patterns
+            )
+            or lower_name.endswith(".jsonl")
+        )
+
+    def _ignored_path_parts(self, path: Path) -> bool:
+        return any(
+            part in self.ignored_directory_names
+            or fnmatch.fnmatch(part, "*_bundle_*")
+            or fnmatch.fnmatch(part, "*_bundle*")
+            for part in path.parts
+        )
+
     def _target_files(self, target: Path) -> list[Path]:
         if target.is_file():
             return [target]
@@ -149,17 +203,20 @@ class IngestTargetService:
             path
             for path in target.rglob("*")
             if path.is_file()
-            and not any(part in self.ignored_directory_names for part in path.parts)
-            and path.suffix.lower() not in self.ignored_file_suffixes
+            and not self._ignored_path_parts(path)
+            and not self._ignored_file(path)
         )
 
     def _process_file(self, path: Path, mime_type: str | None) -> list[DocumentChunk]:
         if path.suffix.lower() == ".pdf" or mime_type == "application/pdf":
             return self.pdf_processor.process_file(path)
         if path.suffix.lower() in self.python_exts:
-            chunks = self.semantic_slicer.process_file(path)
-            if chunks:
-                return chunks
+            try:
+                chunks = self.semantic_slicer.process_file(path)
+                if chunks:
+                    return chunks
+            except IngestProcessorError:
+                return self.text_processor.process_file(path)
         return self.text_processor.process_file(path)
 
     def _chunk_id(self, scope_hash: str, metadata: dict[str, Any], content: str) -> str:

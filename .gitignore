@@ -1,3 +1,6 @@
+.cache/
+.aletheia/
+.git
 __pycache__/
 *.py[cod]
 node_modules/

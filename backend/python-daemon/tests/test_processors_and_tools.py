@@ -1,4 +1,5 @@
 import sqlite3
+import sys
 import tempfile
 import unittest
 from contextlib import closing
@@ -53,6 +54,9 @@ class ProcessorAndToolTests(unittest.TestCase):
             (root / "cache.db").write_bytes(b"sqlite bytes")
             (root / "paper.pdf").write_bytes(b"%PDF")
             (root / "model.h5").write_bytes(b"heavy")
+            bundle_dir = root / "New project_bundle_123"
+            bundle_dir.mkdir()
+            (bundle_dir / "generated_bundle.py").write_text("print('skip')\n", encoding="utf-8")
 
             first = WorkspaceScout(allowed_roots=(root,)).scout("project-a", str(root), include_summaries=True)
             second = WorkspaceScout(allowed_roots=(root,)).scout("project-a", str(root), include_summaries=True)
@@ -76,6 +80,21 @@ class ProcessorAndToolTests(unittest.TestCase):
 
             with self.assertRaises(AdapterFailure):
                 tools.read_file(str(Path(tmp).parent / "outside.txt"))
+
+    def test_shell_adapter_sync_run_uses_subprocess(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shell = ShellAdapter((root,))
+            spec = CommandSpec(
+                executable=sys.executable,
+                args=("-c", "print('ok')"),
+                cwd=str(root),
+            )
+            rc, stdout, stderr = shell.sync_run(spec)
+
+            self.assertEqual(rc, 0)
+            self.assertIn("ok", stdout)
+            self.assertEqual(stderr, "")
 
     def test_read_only_sqlite_rejects_non_select(self):
         with tempfile.TemporaryDirectory() as tmp:

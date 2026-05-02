@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 import hashlib
 import json
 import mimetypes
@@ -193,7 +194,33 @@ class SemanticSlicerAdapter:
 
 
 class WorkspaceScout:
-    ignore_dirs = {".git", "__pycache__", ".venv", "venv", "node_modules", ".idea", ".vscode", "dist", "build"}
+    ignore_dirs = {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".idea",
+        ".vscode",
+        "dist",
+        "build",
+        "output",
+        "runs",
+        "failed_workspaces",
+        "unsloth_compiled_cache",
+        ".venv_semantic",
+        ".venv_training",
+        ".mypy_cache",
+        ".pytest_cache",
+    }
+    ignore_file_patterns = (
+        "*_bundle*.py",
+        "*_bundle*.yaml",
+        "*_Extraction.*",
+        "agnostic_bundle*",
+        "Data_Processing_Efficiency_Audit*",
+        "DAG_Math_Logic_Extraction*",
+    )
     ignore_exts = {
         ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".tiff",
         ".zip", ".gz", ".tar", ".tgz", ".bz2", ".xz", ".7z", ".rar",
@@ -219,7 +246,13 @@ class WorkspaceScout:
         skipped = 0
         skipped_details = {"ignored_extension": 0, "binary": 0, "oversize": 0, "errors": 0}
         for current, dirs, names in os.walk(root):
-            dirs[:] = sorted(d for d in dirs if d not in self.ignore_dirs and not d.startswith("."))
+            dirs[:] = sorted(
+                d for d in dirs
+                if d not in self.ignore_dirs
+                and not d.startswith(".")
+                and not fnmatch.fnmatch(d, "*_bundle_*")
+                and not fnmatch.fnmatch(d, "*_bundle*")
+            )
             for name in sorted(names):
                 path = Path(current) / name
                 if len(files) >= max_files:
@@ -227,6 +260,14 @@ class WorkspaceScout:
                     skipped_details["oversize"] += 1
                     continue
                 if path.suffix.lower() in self.ignore_exts:
+                    skipped += 1
+                    skipped_details["ignored_extension"] += 1
+                    continue
+                if self._ignored_path_parts(path):
+                    skipped += 1
+                    skipped_details["ignored_extension"] += 1
+                    continue
+                if self._ignored_file(path):
                     skipped += 1
                     skipped_details["ignored_extension"] += 1
                     continue
@@ -272,6 +313,26 @@ class WorkspaceScout:
         if not any(resolved == root or root in resolved.parents for root in self.allowed_roots):
             raise IngestProcessorError("path escapes allowed roots")
         return resolved
+
+    def _ignored_path_parts(self, path: Path) -> bool:
+        return any(
+            part in self.ignore_dirs
+            or fnmatch.fnmatch(part, "*_bundle_*")
+            or fnmatch.fnmatch(part, "*_bundle*")
+            for part in path.parts
+        )
+
+    def _ignored_file(self, path: Path) -> bool:
+        lower_name = path.name.lower()
+        normalized = path.as_posix()
+        return (
+            lower_name.endswith(".jsonl")
+            or any(
+                fnmatch.fnmatch(path.name, pattern)
+                or fnmatch.fnmatch(normalized, pattern)
+                for pattern in self.ignore_file_patterns
+            )
+        )
 
     def _is_binary(self, path: Path, scan_bytes: int = 2048) -> bool:
         try:

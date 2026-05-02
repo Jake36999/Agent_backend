@@ -37,6 +37,12 @@ $env:ALETHEIA_BRIDGE_SECRET="change-me"
 node backend\node-mcp\src\server.mjs
 ```
 
+When LM Studio is used in the current supported topology, it goes through the FastMCP shim:
+
+LM Studio -> backend/lmstudio_fastmcp_shim.py -> Python daemon TCP bridge -> ToolAdapters
+
+The Node MCP gateway remains the generic strict stdio gateway, while the FastMCP shim is the currently verified LM Studio adapter.
+
 The Node process validates public tool schemas and forwards tool calls with a per-request HMAC auth envelope.
 
 ## LM Studio And Chroma
@@ -66,6 +72,7 @@ The admin CLI calls Python internals directly. It does not expose filesystem mut
 - Workspace scouting is exposed by `mcp_scout_workspace`.
 - Failed vector upserts are recoverable with `aletheia-admin reconcile-project`.
 - Dead letters are stored in `control.db` and can be inspected with `aletheia-admin list-dead-letters`.
+- Do not ingest generated extraction bundles or directories such as `New project_bundle_*`, `*_bundle*.py`, or `*_bundle*.yaml`.
 - Worker heartbeats and process state are stored in `process_registry`.
 
 ## Smoke Test

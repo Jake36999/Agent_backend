@@ -35,23 +35,37 @@ class FakeCollection:
                 "embedding": kwargs["embeddings"][index],
             }
 
+    def _matches_where(self, metadata, where):
+        """Check if metadata matches a where filter (supports Chroma $and and $eq operators)."""
+        if "$and" in where:
+            return all(self._matches_where(metadata, clause) for clause in where["$and"])
+        for key, expected in where.items():
+            if isinstance(expected, dict) and "$eq" in expected:
+                if metadata.get(key) != expected["$eq"]:
+                    return False
+            else:
+                if metadata.get(key) != expected:
+                    return False
+        return True
+
     def delete(self, **kwargs):
         self.deletes.append(kwargs)
         where = kwargs["where"]
         stale = [
             chunk_id
             for chunk_id, row in self.rows.items()
-            if all(row["metadata"].get(key) == value for key, value in where.items())
+            if self._matches_where(row["metadata"], where)
         ]
         for chunk_id in stale:
             del self.rows[chunk_id]
 
     def query(self, **kwargs):
         self.queries.append(kwargs)
+        where = kwargs["where"]
         matches = [
             (chunk_id, row)
             for chunk_id, row in self.rows.items()
-            if all(row["metadata"].get(key) == value for key, value in kwargs["where"].items())
+            if self._matches_where(row["metadata"], where)
         ]
         if matches:
             return {
@@ -60,10 +74,16 @@ class FakeCollection:
                 "metadatas": [[row["metadata"] for _, row in matches]],
                 "distances": [[0.1 for _ in matches]],
             }
+        scope_hash = where.get("project_scope_hash")
+        if scope_hash is None and "$and" in where:
+            for clause in where["$and"]:
+                if "project_scope_hash" in clause:
+                    scope_hash = clause["project_scope_hash"].get("$eq")
+                    break
         return {
             "ids": [["chunk-1"]],
             "documents": [["hello world"]],
-            "metadatas": [[{"project_scope_hash": kwargs["where"]["project_scope_hash"]}]],
+            "metadatas": [[{"project_scope_hash": scope_hash}]],
             "distances": [[0.1]],
         }
 
@@ -180,6 +200,28 @@ class ChromaAndIngestTests(unittest.TestCase):
             self.assertIn("new content", results[0]["content"])
             self.assertTrue(fake_client.collection.deletes)
 
+    def test_invalid_python_file_falls_back_to_text_chunking(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_databases(root)
+            source = root / "broken.py"
+            source.write_text("def broken(:\n    pass\n", encoding="utf-8")
+            fake_client = FakeChromaClient()
+            manager = ChromaManager(
+                ChromaConfig(chroma_path=root / "chroma"),
+                http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
+                chroma_client=fake_client,
+            )
+            repo = QueueRepository(root / "queue.db", root / "control.db")
+            service = IngestTargetService(repo, manager, allowed_roots=(root,))
+
+            result = service.ingest_target("project-a", str(source))
+
+            self.assertEqual(result["chunks_indexed"], 1)
+            chunks = repo.list_chunks("project-a")
+            self.assertEqual(len(chunks), 1)
+            self.assertEqual(chunks[0]["processor"], "text")
+
     def test_unchanged_file_skips_reindex_without_force(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -277,6 +319,29 @@ class ChromaAndIngestTests(unittest.TestCase):
 
             self.assertEqual(result["chunks_indexed"], 1)
             self.assertEqual(rebuilt.search("project-a", "rebuild", k=5)[0]["content"], "rebuild me")
+
+    def test_delete_chunks_uses_chroma_compatible_and_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_client = FakeChromaClient()
+            manager = ChromaManager(
+                ChromaConfig(chroma_path=root / "chroma"),
+                http_post=lambda **_: FakeResponse({"data": [{"embedding": [0.2]}]}),
+                chroma_client=fake_client,
+            )
+            scope_hash = manager.project_scope_hash("project-a")
+            test_path = str((root / "test.py").resolve())
+
+            manager.delete_chunks(project_id="project-a", absolute_path=test_path)
+
+            self.assertEqual(len(fake_client.collection.deletes), 1)
+            delete_call = fake_client.collection.deletes[0]
+            where = delete_call["where"]
+            self.assertEqual(set(where.keys()), {"$and"})
+            self.assertEqual(len(where["$and"]), 2)
+            clauses = where["$and"]
+            self.assertTrue(any(clause.get("project_scope_hash", {}).get("$eq") == scope_hash for clause in clauses))
+            self.assertTrue(any(clause.get("absolute_path", {}).get("$eq") == test_path for clause in clauses))
 
     def test_failed_vector_upsert_preserves_sqlite_chunks_for_reconciliation(self):
         class BrokenUpsertCollection(FakeCollection):
