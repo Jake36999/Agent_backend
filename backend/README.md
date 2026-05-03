@@ -123,6 +123,49 @@ node test\run-tests.mjs
 
 Live integration tests that require LM Studio, real Chroma state, PDF/OCR binaries, or external MCP clients should be opt-in and must not run in the default unit suite.
 
+## Agent Workflow Controller Scaffold (Opt-in)
+
+The Python daemon includes an opt-in deterministic workflow controller for Tool Assist investigations. It does not replace the existing MCP tools, the daemon TCP bridge, or the LM Studio FastMCP shim. It is a separate local runner for operators who want bounded model reasoning around deterministic backend tool execution.
+
+Example:
+
+```powershell
+cd backend\python-daemon
+python -m orchestrator.agent_workflow_cli `
+  --objective "Smoke test Tool Assist from backend agent workflow" `
+  --target-repo "C:\path\to\project\backend\python-daemon\orchestrator" `
+  --profile safe
+```
+
+The v1 phase loop is:
+
+```text
+PLAN -> ACT -> SUMMARISE_TOOL_RESULT -> CHECK -> SYNTHESIZE -> FINAL
+```
+
+Only `PLAN`, `SYNTHESIZE`, and `FINAL` call the model. `ACT` executes the active todo through the existing `tools.call` bridge path, and `CHECK` is a deterministic state transition. Tool results are compacted before being written to workflow state; large report bodies, manifests, stdout/stderr, and raw backend JSON are omitted by default. `mcp_investigation_read_report` only stores capped content previews when a todo explicitly requests `include_content: true`.
+
+Configuration:
+
+```powershell
+$env:ALETHEIA_AGENT_API_MODE="native"  # native uses /api/v1/chat; compatible uses /v1/chat/completions
+$env:ALETHEIA_AGENT_CHAT_URL="http://127.0.0.1:1234/api/v1/chat"
+$env:ALETHEIA_AGENT_MODEL="your-lm-studio-model"
+$env:ALETHEIA_LM_STUDIO_API_TOKEN=""
+$env:ALETHEIA_AGENT_REASONING_PLAN="low"
+$env:ALETHEIA_AGENT_REASONING_ACT="off"
+$env:ALETHEIA_AGENT_REASONING_CHECK="low"  # reserved for future hybrid CHECK; v1 CHECK is deterministic
+$env:ALETHEIA_AGENT_REASONING_SYNTHESIZE="low"
+$env:ALETHEIA_AGENT_REASONING_FINAL="off"
+$env:ALETHEIA_AGENT_MAX_STEPS="8"
+$env:ALETHEIA_AGENT_MAX_TOOL_RESULT_CHARS="2000"
+$env:ALETHEIA_AGENT_STATE_DIR="C:\path\to\project\.aletheia_state\agent_workflows"
+```
+
+The default LM Studio mode is native `/api/v1/chat` for phase reasoning control. Set `ALETHEIA_AGENT_API_MODE=compatible` when using OpenAI-compatible `/v1/chat/completions` structured-output behavior. If LM Studio rejects the native `reasoning` field, the workflow retries that request once without `reasoning` and records the fallback in state.
+
+Ingestion remains gated: `mcp_ingest_target` is blocked unless the runner is explicitly constructed with `allow_ingest=True` and the validated todo also marks ingestion as allowed. This workflow does not directly change LM Studio's normal built-in tool-calling behavior unless the operator uses this external controller flow.
+
 ## Production Constraints
 
 No UI, watchers, legacy FastMCP runtime, ChatML routing, or non-HITL mutating file tools are part of this runtime.
