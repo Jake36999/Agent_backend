@@ -6,6 +6,7 @@ from .adapters import FileToolAdapter, ReadOnlySqliteAdapter, ToolAdapters
 from .bridge_server import BridgeSecurity
 from .chroma_manager import ChromaConfig, ChromaManager
 from .config import RuntimeConfig
+from .tool_assist_adapter import ToolAssistAdapter
 from .db_bootstrap import bootstrap_databases
 from .execution_loop import ExecutionLoop
 from .ingest.processors import WorkspaceScout
@@ -78,6 +79,7 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         sqlite_tools=sqlite_tools,
         workspace_scout=scout,
         ocr_provider=ocr_provider,
+        tool_assist=ToolAssistAdapter(),
     )
     return RuntimeComponents(
         config=config,

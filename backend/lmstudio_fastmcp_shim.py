@@ -209,5 +209,44 @@ def mcp_extract_image(
     return as_pretty_json(result)
 
 
+@mcp.tool()
+def mcp_investigation_start(objective: str, target_repo: str, profile: str = "safe") -> str:
+    result = call_tool(
+        "mcp_investigation_start",
+        {"objective": objective, "target_repo": target_repo, "profile": profile},
+    )
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_investigation_filemap(session_path: str, profile: str = "safe") -> str:
+    result = call_tool(
+        "mcp_investigation_filemap",
+        {"session_path": session_path, "profile": profile},
+    )
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_investigation_validate_manifest(session_path: str) -> str:
+    result = call_tool("mcp_investigation_validate_manifest", {"session_path": session_path})
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_investigation_read_report(session_path: str, artifact_key: str, max_chars: int = 12000) -> str:
+    result = call_tool(
+        "mcp_investigation_read_report",
+        {"session_path": session_path, "artifact_key": artifact_key, "max_chars": max_chars},
+    )
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_investigation_compile_handoff(session_path: str) -> str:
+    result = call_tool("mcp_investigation_compile_handoff", {"session_path": session_path})
+    return as_pretty_json(result)
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

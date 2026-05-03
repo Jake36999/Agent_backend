@@ -22,6 +22,9 @@ $env:ALETHEIA_BRIDGE_SECRET="change-me"
 $env:ALETHEIA_PROJECT_ID="my-project"  # defaults to project root name
 $env:ALETHEIA_ENABLE_ADMIN_BRIDGE="false"  # enable daemon.* admin methods
 $env:ALETHEIA_APPROVAL_SECRET="approval-secret"
+
+$env:TOOLSET_ROOT="C:\path\to\toolset-repo"
+$env:LTA_OUTPUT_ROOT="C:\path\to\project\.aletheia_state\tool_assist"  # optional
 python -m orchestrator.main
 ```
 
@@ -42,6 +45,7 @@ When LM Studio is used in the current supported topology, it goes through the Fa
 LM Studio -> backend/lmstudio_fastmcp_shim.py -> Python daemon TCP bridge -> ToolAdapters
 
 The Node MCP gateway remains the generic strict stdio gateway, while the FastMCP shim is the currently verified LM Studio adapter.
+The investigation tools (`mcp_investigation_*`) are also exposed through `backend/lmstudio_fastmcp_shim.py` for this LM Studio topology.
 
 The Node process validates public tool schemas and forwards tool calls with a per-request HMAC auth envelope.
 
@@ -84,6 +88,15 @@ The admin CLI calls Python internals directly. It does not expose filesystem mut
 - Ingestion is exposed by `mcp_ingest_target`; unchanged files are skipped, changed files are reindexed, and deleted files are removed during directory ingestion.
 - Search is exposed by `mcp_semantic_search` and is always scoped by `project_scope_hash`.
 - Workspace scouting is exposed by `mcp_scout_workspace`.
+
+- External investigation flow is exposed by:
+  1. `mcp_investigation_start`
+  2. `mcp_investigation_filemap`
+  3. `mcp_investigation_validate_manifest`
+  4. `mcp_investigation_read_report`
+  5. `mcp_investigation_compile_handoff`
+- Investigation tools return compact summaries and artifact paths only; memory mutation still goes through `mcp_ingest_target`.
+- Tool Assist remains an external dependency loaded from `TOOLSET_ROOT` (not vendored into this backend).
 - Failed vector upserts are recoverable with `aletheia-admin reconcile-project`.
 - Dead letters are stored in `control.db` and can be inspected with `aletheia-admin list-dead-letters`.
 - Do not ingest generated extraction bundles or directories such as `New project_bundle_*`, `*_bundle*.py`, or `*_bundle*.yaml`.
