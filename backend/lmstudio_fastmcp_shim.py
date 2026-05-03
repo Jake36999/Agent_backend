@@ -237,9 +237,35 @@ def mcp_investigation_validate_manifest(session_path: str) -> str:
 def mcp_investigation_read_report(session_path: str, artifact_key: str, max_chars: int = 12000) -> str:
     result = call_tool(
         "mcp_investigation_read_report",
-        {"session_path": session_path, "artifact_key": artifact_key, "max_chars": max_chars},
+        {
+            "session_path": session_path,
+            "artifact_key": artifact_key,
+            "max_chars": max_chars,
+        },
     )
-    return as_pretty_json(result)
+
+    compact: dict[str, Any] = {
+        "ok": bool(result.get("ok", False)),
+        "status": str(result.get("status", "")),
+        "summary": str(result.get("summary", "")),
+        "artifacts": result.get("artifacts", {}),
+        "recommended_next_tool": result.get("recommended_next_tool", ""),
+    }
+
+    if "error" in result:
+        compact["error"] = result["error"]
+
+    if "content_omitted" in result:
+        compact["content_omitted"] = bool(result.get("content_omitted"))
+
+    if "char_count" in result:
+        compact["char_count"] = int(result.get("char_count") or 0)
+
+    if "content" in result:
+        compact["content_omitted"] = True
+        compact["char_count"] = len(str(result.get("content", "")))
+
+    return as_pretty_json(compact)
 
 
 @mcp.tool()

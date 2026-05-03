@@ -19,7 +19,13 @@ class ToolAssistAdapterTests(unittest.TestCase):
                 os.environ["TOOLSET_ROOT"] = previous
 
     def test_missing_toolset_root_fails_clearly(self):
-        result = ToolAssistAdapter(toolset_root=None).investigation_start("obj", "repo")
+        previous = os.environ.pop("TOOLSET_ROOT", None)
+        try:
+            result = ToolAssistAdapter(toolset_root=None).investigation_start("obj", "repo")
+        finally:
+            if previous is not None:
+                os.environ["TOOLSET_ROOT"] = previous
+
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"]["code"], "missing_toolset_root")
 
