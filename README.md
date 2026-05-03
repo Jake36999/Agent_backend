@@ -192,12 +192,38 @@ Install the following locally:
 * A local embedding model loaded in LM Studio
 * Optional: PowerShell Core (`pwsh`) for cross-platform shell consistency
 
+Clone the repository and define a reusable project root variable for your shell.
+
+PowerShell:
+
+```powershell
+$env:PROJECT_ROOT="C:\path\to\Agent_backend"
+cd $env:PROJECT_ROOT
+```
+
+macOS/Linux shell:
+
+```bash
+export PROJECT_ROOT="/path/to/Agent_backend"
+cd "$PROJECT_ROOT"
+```
+
 Recommended Python setup:
 
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\python-daemon"
+cd "$env:PROJECT_ROOT\backend\python-daemon"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -e .
+```
+
+For macOS/Linux:
+
+```bash
+cd "$PROJECT_ROOT/backend/python-daemon"
+python -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e .
 ```
@@ -205,7 +231,14 @@ pip install -e .
 Recommended Node setup:
 
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\node-mcp"
+cd "$env:PROJECT_ROOT\backend\node-mcp"
+npm install
+```
+
+For macOS/Linux:
+
+```bash
+cd "$PROJECT_ROOT/backend/node-mcp"
 npm install
 ```
 
@@ -213,7 +246,7 @@ npm install
 
 ## LM Studio API Setup
 
-> Important: Do not commit API tokens. Keep local startup commands in a personal file such as `backend\start-local-daemon.ps1`, and make sure it is ignored by Git.
+> Important: Do not commit API tokens. Keep local startup commands in a personal file such as `backend/start-local-daemon.ps1` or `backend/start-local-daemon.sh`, and make sure it is ignored by Git.
 
 ### Step 1 — Obtain an LM Studio API Token
 
@@ -330,15 +363,18 @@ $env:ALETHEIA_LM_STUDIO_BASE_URL="http://127.0.0.1:1234/api/v0"
 
 Set these values before running the daemon. Replace paths and tokens with your own local values.
 
+PowerShell:
+
 ```powershell
+$env:PROJECT_ROOT="C:\path\to\Agent_backend"
 $env:LM_API_TOKEN="PASTE_YOUR_LM_STUDIO_TOKEN_HERE"
 
-$env:ALETHEIA_PROJECT_ROOT="C:\Users\jakem\Documents\New project"
+$env:ALETHEIA_PROJECT_ROOT=$env:PROJECT_ROOT
 $env:ALETHEIA_PROJECT_ID="aletheia"
-$env:ALETHEIA_ALLOWED_ROOTS="C:\Users\jakem\Documents\New project"
+$env:ALETHEIA_ALLOWED_ROOTS=$env:PROJECT_ROOT
 
-$env:ALETHEIA_STATE_DIR="C:\Users\jakem\Documents\New project\.aletheia"
-$env:ALETHEIA_CHROMA_PATH="C:\Users\jakem\Documents\New project\.aletheia\chroma"
+$env:ALETHEIA_STATE_DIR="$env:PROJECT_ROOT\.aletheia"
+$env:ALETHEIA_CHROMA_PATH="$env:PROJECT_ROOT\.aletheia\chroma"
 
 $env:ALETHEIA_LM_STUDIO_API_TOKEN=$env:LM_API_TOKEN
 $env:ALETHEIA_LM_STUDIO_API_BASE_URL="http://127.0.0.1:1234/api/v1"
@@ -352,6 +388,32 @@ $env:ALETHEIA_BRIDGE_PORT="8765"
 $env:ALETHEIA_ENABLE_ADMIN_BRIDGE="false"
 
 Remove-Item Env:\ALETHEIA_BRIDGE_SECRET -ErrorAction SilentlyContinue
+```
+
+macOS/Linux shell:
+
+```bash
+export PROJECT_ROOT="/path/to/Agent_backend"
+export LM_API_TOKEN="PASTE_YOUR_LM_STUDIO_TOKEN_HERE"
+
+export ALETHEIA_PROJECT_ROOT="$PROJECT_ROOT"
+export ALETHEIA_PROJECT_ID="aletheia"
+export ALETHEIA_ALLOWED_ROOTS="$PROJECT_ROOT"
+
+export ALETHEIA_STATE_DIR="$PROJECT_ROOT/.aletheia"
+export ALETHEIA_CHROMA_PATH="$PROJECT_ROOT/.aletheia/chroma"
+
+export ALETHEIA_LM_STUDIO_API_TOKEN="$LM_API_TOKEN"
+export ALETHEIA_LM_STUDIO_API_BASE_URL="http://127.0.0.1:1234/api/v1"
+export ALETHEIA_LM_STUDIO_BASE_URL="http://127.0.0.1:1234/v1"
+
+export ALETHEIA_EMBEDDING_MODEL="PASTE_EXACT_EMBEDDING_MODEL_KEY_HERE"
+export ALETHEIA_AUTO_LOAD_EMBEDDING_MODEL="true"
+
+export ALETHEIA_BRIDGE_HOST="127.0.0.1"
+export ALETHEIA_BRIDGE_PORT="8765"
+export ALETHEIA_ENABLE_ADMIN_BRIDGE="false"
+unset ALETHEIA_BRIDGE_SECRET
 ```
 
 ### Environment Variable Reference
@@ -375,8 +437,17 @@ Remove-Item Env:\ALETHEIA_BRIDGE_SECRET -ErrorAction SilentlyContinue
 
 ## Running the Backend Daemon
 
+PowerShell:
+
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\python-daemon"
+cd "$env:PROJECT_ROOT\backend\python-daemon"
+python -m orchestrator.main
+```
+
+macOS/Linux shell:
+
+```bash
+cd "$PROJECT_ROOT/backend/python-daemon"
 python -m orchestrator.main
 ```
 
@@ -386,8 +457,17 @@ Expected result: the daemon starts and listens on the configured bridge host and
 
 ## Running the Node MCP Gateway
 
+PowerShell:
+
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\node-mcp"
+cd "$env:PROJECT_ROOT\backend\node-mcp"
+npm start
+```
+
+macOS/Linux shell:
+
+```bash
+cd "$PROJECT_ROOT/backend/node-mcp"
 npm start
 ```
 
@@ -395,6 +475,12 @@ If the package does not define `npm start`, run the server entrypoint directly:
 
 ```powershell
 node .\src\server.mjs
+```
+
+For macOS/Linux:
+
+```bash
+node ./src/server.mjs
 ```
 
 ---
@@ -451,7 +537,7 @@ $req = @{
     toolName = "mcp_ingest_target"
     args = @{
       project_id = "aletheia"
-      absolute_path = "C:\Users\jakem\Documents\New project\backend\README.md"
+      absolute_path = "$env:PROJECT_ROOT\backend\README.md"
       force_reindex = $true
     }
   }
@@ -460,6 +546,14 @@ $req = @{
 $writer.WriteLine($req)
 $reader.ReadLine()
 $client.Close()
+```
+
+For macOS/Linux, use an absolute path value such as:
+
+```json
+{
+  "absolute_path": "/path/to/Agent_backend/backend/README.md"
+}
 ```
 
 Expected result:
@@ -480,15 +574,33 @@ Expected result:
 
 ### Python Tests
 
+PowerShell:
+
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\python-daemon"
+cd "$env:PROJECT_ROOT\backend\python-daemon"
+pytest
+```
+
+macOS/Linux shell:
+
+```bash
+cd "$PROJECT_ROOT/backend/python-daemon"
 pytest
 ```
 
 ### Node Tests
 
+PowerShell:
+
 ```powershell
-cd "C:\Users\jakem\Documents\New project\backend\node-mcp"
+cd "$env:PROJECT_ROOT\backend\node-mcp"
+npm test
+```
+
+macOS/Linux shell:
+
+```bash
+cd "$PROJECT_ROOT/backend/node-mcp"
 npm test
 ```
 
@@ -496,6 +608,12 @@ If no package script exists, run the bundled test runner:
 
 ```powershell
 node .\test\run-tests.mjs
+```
+
+For macOS/Linux:
+
+```bash
+node ./test/run-tests.mjs
 ```
 
 ### Recommended Commit Hygiene
