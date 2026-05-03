@@ -7,6 +7,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Protocol
 
+from .tool_assist_adapter import ToolAssistAdapter
+
 import yaml
 
 
@@ -165,12 +167,14 @@ class ToolAdapters:
         sqlite_tools: ReadOnlySqliteAdapter | None = None,
         workspace_scout: WorkspaceScoutAdapter | None = None,
         ocr_provider: OCRProvider | None = None,
+        tool_assist: ToolAssistAdapter | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
         self.sqlite_tools = sqlite_tools
         self.workspace_scout = workspace_scout
         self.ocr_provider = ocr_provider
+        self.tool_assist = tool_assist or ToolAssistAdapter()
 
     def call_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -220,6 +224,37 @@ class ToolAdapters:
                         str(args["expected_metadata_hash"]),
                     ),
                 }
+            if tool_name == "mcp_investigation_start":
+                if self.tool_assist is None:
+                    raise AdapterFailure("tool assist adapter is not configured")
+                return self.tool_assist.investigation_start(
+                    str(args["objective"]),
+                    str(args["target_repo"]),
+                    str(args.get("profile", "safe")),
+                )
+            if tool_name == "mcp_investigation_filemap":
+                if self.tool_assist is None:
+                    raise AdapterFailure("tool assist adapter is not configured")
+                return self.tool_assist.investigation_filemap(
+                    str(args["session_path"]),
+                    str(args.get("profile", "safe")),
+                )
+            if tool_name == "mcp_investigation_validate_manifest":
+                if self.tool_assist is None:
+                    raise AdapterFailure("tool assist adapter is not configured")
+                return self.tool_assist.investigation_validate_manifest(str(args["session_path"]))
+            if tool_name == "mcp_investigation_read_report":
+                if self.tool_assist is None:
+                    raise AdapterFailure("tool assist adapter is not configured")
+                return self.tool_assist.investigation_read_report(
+                    str(args["session_path"]),
+                    str(args["artifact_key"]),
+                    int(args.get("max_chars", 12000)),
+                )
+            if tool_name == "mcp_investigation_compile_handoff":
+                if self.tool_assist is None:
+                    raise AdapterFailure("tool assist adapter is not configured")
+                return self.tool_assist.investigation_compile_handoff(str(args["session_path"]))
             if tool_name == "mcp_extract_image":
                 if self.ocr_provider is None:
                     raise AdapterFailure("OCR provider is not configured")
