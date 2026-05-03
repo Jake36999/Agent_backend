@@ -28,6 +28,81 @@ export const CONTRACTS = [
     },
   },
   {
+    name: "mcp_investigation_start",
+    description: "Start a safe external ToolSet investigation session.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        objective: { type: "string", minLength: 1 },
+        target_repo: { type: "string", minLength: 1 },
+        profile: { type: "string", enum: ["safe"] },
+      },
+      required: ["objective", "target_repo"],
+    },
+  },
+  {
+    name: "mcp_investigation_filemap",
+    description: "Build constrained file map summaries for an investigation session.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        session_path: { type: "string", minLength: 1 },
+        profile: { type: "string", enum: ["safe"] },
+      },
+      required: ["session_path"],
+    },
+  },
+  {
+    name: "mcp_investigation_validate_manifest",
+    description: "Validate a ToolSet investigation manifest.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        session_path: { type: "string", minLength: 1 },
+      },
+      required: ["session_path"],
+    },
+  },
+  {
+    name: "mcp_investigation_read_report",
+    description: "Read bounded investigation report content from ToolSet artifacts.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        session_path: { type: "string", minLength: 1 },
+        artifact_key: { type: "string", enum: ["manifest_csv", "manifest_health_json", "manifest_doctor_json", "manifest_doctor_md", "command_lint_json", "slicer_json", "slicer_md", "final_markdown", "final_python_bundle", "archive_yaml"] },
+        max_chars: { type: "integer", minimum: 1, maximum: 12000 },
+      },
+      required: ["session_path", "artifact_key"],
+    },
+  },
+  {
+    name: "mcp_investigation_compile_handoff",
+    description: "Compile investigation handoff metadata and artifact paths.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        session_path: { type: "string", minLength: 1 },
+      },
+      required: ["session_path"],
+    },
+  },
+  {
     name: "mcp_ingest_target",
     description: "Route a local file to PDFProcessor or CodebaseProcessor by MIME type.",
     strict: true,
@@ -151,6 +226,9 @@ function validateValue(schema, value, path) {
       }
       if (schema.pattern && !(new RegExp(schema.pattern).test(value))) {
         details.push({ path, keyword: "pattern", message: `must match ${schema.pattern}` });
+      }
+      if (schema.enum && !schema.enum.includes(value)) {
+        details.push({ path, keyword: "enum", message: `must be one of: ${schema.enum.join(", ")}` });
       }
     }
   }
