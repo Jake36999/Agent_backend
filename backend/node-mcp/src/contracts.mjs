@@ -2,6 +2,25 @@ const DRAFT7 = "http://json-schema.org/draft-07/schema#";
 
 export const CONTRACTS = [
   {
+    name: "mcp_agent_workflow_run",
+    description: "Run the deterministic high-level Tool Assist workflow controller once. target_repo must be an existing absolute local path.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        objective: { type: "string", minLength: 1 },
+        target_repo: { type: "string", minLength: 1 },
+        profile: { type: "string", enum: ["safe"], default: "safe" },
+        allow_ingest: { type: "boolean", default: false },
+        include_report_preview: { type: "boolean", default: false },
+        use_model_phases: { type: "boolean", default: false },
+      },
+      required: ["objective", "target_repo"],
+    },
+  },
+  {
     name: "mcp_extract_image",
     description: "Run OCR fallback against non-selectable text content.",
     strict: true,

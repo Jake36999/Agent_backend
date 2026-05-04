@@ -7,6 +7,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Protocol
 
+from .agent_workflow.mcp_tool import run_agent_workflow_tool
 from .tool_assist_adapter import ToolAssistAdapter
 
 import yaml
@@ -168,6 +169,7 @@ class ToolAdapters:
         workspace_scout: WorkspaceScoutAdapter | None = None,
         ocr_provider: OCRProvider | None = None,
         tool_assist: ToolAssistAdapter | None = None,
+        workflow_runner_factory: Any | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -175,9 +177,16 @@ class ToolAdapters:
         self.workspace_scout = workspace_scout
         self.ocr_provider = ocr_provider
         self.tool_assist = tool_assist or ToolAssistAdapter()
+        self.workflow_runner_factory = workflow_runner_factory
 
     def call_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         try:
+            if tool_name == "mcp_agent_workflow_run":
+                return run_agent_workflow_tool(
+                    args,
+                    tool_caller=self.call_mcp_tool,
+                    runner_factory=self.workflow_runner_factory,
+                )
             if tool_name == "mcp_semantic_search":
                 if self.semantic_memory is None:
                     raise AdapterFailure("semantic memory adapter is not configured")

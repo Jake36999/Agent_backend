@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 from urllib import request
@@ -10,6 +11,9 @@ class ModelOutputInvalid(ValueError):
     pass
 
 
+logger = logging.getLogger(__name__)
+
+
 class LMStudioClient:
     def __init__(self) -> None:
         self.api_mode = os.getenv("ALETHEIA_AGENT_API_MODE", "native").strip().lower()
@@ -17,7 +21,7 @@ class LMStudioClient:
             self.api_mode = "compatible"
         default_url = "http://127.0.0.1:1234/api/v1/chat" if self.api_mode == "native" else "http://127.0.0.1:1234/v1/chat/completions"
         self.url = os.getenv("ALETHEIA_AGENT_CHAT_URL", default_url)
-        self.model = os.getenv("ALETHEIA_AGENT_MODEL", "")
+        self.model = os.getenv("ALETHEIA_AGENT_MODEL") or "qwen3-8b"
         self.token = os.getenv("ALETHEIA_LM_STUDIO_API_TOKEN", "")
 
     def chat_json(
@@ -55,6 +59,11 @@ class LMStudioClient:
         include_reasoning: bool,
     ) -> str:
         payload = self._payload(messages, schema, reasoning, max_tokens, include_reasoning=include_reasoning)
+        logger.debug(
+            "LM request model=%s, auth=%s",
+            payload["model"],
+            "present" if self.token else "missing",
+        )
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
@@ -80,6 +89,8 @@ class LMStudioClient:
         *,
         include_reasoning: bool,
     ) -> dict[str, Any]:
+        if not self.model:
+            raise ModelOutputInvalid("Model must be specified")
         if self.api_mode == "compatible":
             return {
                 "model": self.model,

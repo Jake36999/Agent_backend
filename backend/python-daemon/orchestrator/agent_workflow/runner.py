@@ -40,6 +40,8 @@ PLAN_SCHEMA = {
     },
 }
 
+COMPLETE_SUMMARY = "Workflow complete. Final report, Python bundle, archive YAML, manifest, and session artifacts are available."
+
 
 class WorkflowRunner:
     def __init__(
@@ -47,10 +49,12 @@ class WorkflowRunner:
         lm_client: LMStudioClient | None = None,
         bridge_client: TcpBridgeClient | None = None,
         allow_ingest: bool = False,
+        use_model_phases: bool = True,
     ) -> None:
         self.lm_client = lm_client or LMStudioClient()
         self.bridge_client = bridge_client or TcpBridgeClient()
         self.allow_ingest = allow_ingest
+        self.use_model_phases = use_model_phases
         self.max_steps = int(os.getenv("ALETHEIA_AGENT_MAX_STEPS", "8"))
         self.max_tool_result_chars = int(os.getenv("ALETHEIA_AGENT_MAX_TOOL_RESULT_CHARS", "2000"))
 
@@ -61,6 +65,7 @@ class WorkflowRunner:
         objective: str | None = None,
         target_repo: str | None = None,
         profile: str = "safe",
+        include_report_preview: bool = False,
     ) -> tuple[WorkflowState, str]:
         state = WorkflowState.create(user_prompt)
         policy = reasoning_policy()
@@ -68,7 +73,14 @@ class WorkflowRunner:
         state.phase = "PLAN"
         state.save()
 
-        plan = self._plan(state, policy, objective=objective, target_repo=target_repo, profile=profile)
+        plan = self._plan(
+            state,
+            policy,
+            objective=objective,
+            target_repo=target_repo,
+            profile=profile,
+            include_report_preview=include_report_preview,
+        )
         if plan is None:
             state.final_summary = "Unable to create a valid workflow plan."
             state.save()
@@ -85,8 +97,14 @@ class WorkflowRunner:
             return state, state.final_summary
 
         self._execute_todos(state)
-        self._synthesize(state, policy)
-        final_response = self._final(state, policy)
+        if self.use_model_phases:
+            self._synthesize(state, policy)
+            final_response = self._final(state, policy)
+        else:
+            state.phase = "FINAL"
+            state.final_summary = self._deterministic_summary(state)
+            state.save()
+            final_response = state.final_summary
         state.phase = "FINAL"
         state.save()
         return state, final_response
@@ -99,24 +117,26 @@ class WorkflowRunner:
         objective: str | None,
         target_repo: str | None,
         profile: str,
+        include_report_preview: bool,
     ) -> dict[str, Any] | None:
         model_plan: dict[str, Any] | None = None
-        try:
-            model_plan, fallback = self.lm_client.chat_json(
-                messages=[
-                    {"role": "system", "content": "Output compact workflow JSON only. Do not call tools."},
-                    {"role": "user", "content": state.user_prompt},
-                ],
-                schema=PLAN_SCHEMA,
-                reasoning=policy["PLAN"],
-                max_tokens=500,
-                phase="PLAN",
-            )
-            state.reasoning_policy["fallbacks"]["PLAN"] = fallback
-        except ModelOutputInvalid as exc:
-            state.errors.append({"code": "MODEL_OUTPUT_INVALID", "message": str(exc)[:1000]})
-        except Exception as exc:
-            state.errors.append({"code": "MODEL_CALL_FAILED", "message": str(exc)[:1000]})
+        if self.use_model_phases:
+            try:
+                model_plan, fallback = self.lm_client.chat_json(
+                    messages=[
+                        {"role": "system", "content": "Output compact workflow JSON only. Do not call tools."},
+                        {"role": "user", "content": state.user_prompt},
+                    ],
+                    schema=PLAN_SCHEMA,
+                    reasoning=policy["PLAN"],
+                    max_tokens=500,
+                    phase="PLAN",
+                )
+                state.reasoning_policy["fallbacks"]["PLAN"] = fallback
+            except ModelOutputInvalid as exc:
+                state.errors.append({"code": "MODEL_OUTPUT_INVALID", "message": str(exc)[:1000]})
+            except Exception as exc:
+                state.errors.append({"code": "MODEL_CALL_FAILED", "message": str(exc)[:1000]})
 
         if model_plan and self._plan_valid(model_plan):
             if model_plan.get("todos"):
@@ -125,7 +145,12 @@ class WorkflowRunner:
         inferred_objective = objective or self._extract_prompt_value(state.user_prompt, "objective")
         inferred_target_repo = target_repo or self._extract_prompt_value(state.user_prompt, "target repo")
         if inferred_objective and inferred_target_repo:
-            return self._canonical_plan(inferred_objective, inferred_target_repo, profile)
+            return self._canonical_plan(
+                inferred_objective,
+                inferred_target_repo,
+                profile,
+                include_report_preview=include_report_preview,
+            )
         state.errors.append({"code": "NEEDS_INPUT", "message": "objective and target_repo are required"})
         if not any(err["code"] == "MODEL_OUTPUT_INVALID" for err in state.errors):
             state.errors.append({"code": "MODEL_OUTPUT_INVALID", "message": "planner output could not be used"})
@@ -159,7 +184,7 @@ class WorkflowRunner:
                 include_content=bool(todo.get("include_content", False)),
             )
             state.tool_results.append(compact)
-            state.artifacts.update(compact.get("artifacts", {}))
+            state.artifacts = self._merge_artifacts(state.artifacts, compact.get("artifacts", {}))
             state.save()
 
             state.phase = "CHECK"
@@ -249,7 +274,14 @@ class WorkflowRunner:
                 return False
         return True
 
-    def _canonical_plan(self, objective: str, target_repo: str, profile: str) -> dict[str, Any]:
+    def _canonical_plan(
+        self,
+        objective: str,
+        target_repo: str,
+        profile: str,
+        *,
+        include_report_preview: bool = False,
+    ) -> dict[str, Any]:
         return {
             "goal": objective,
             "stop_condition": "handoff compiled or blocking error returned",
@@ -282,6 +314,7 @@ class WorkflowRunner:
                         "artifact_key": "manifest_health_json",
                         "max_chars": self.max_tool_result_chars,
                     },
+                    "include_content": bool(include_report_preview),
                 },
                 {
                     "id": "compile_handoff",
@@ -341,4 +374,17 @@ class WorkflowRunner:
 
     def _deterministic_summary(self, state: WorkflowState) -> str:
         status = "blocked" if any(todo.get("status") == "blocked" for todo in state.todos) else "complete"
-        return f"Workflow {status}. Artifacts: {sorted(state.artifacts.values())}"
+        if status == "complete":
+            return COMPLETE_SUMMARY
+        return "Workflow blocked before completion."
+
+    def _merge_artifacts(self, existing: dict[str, str], incoming: dict[str, Any]) -> dict[str, str]:
+        merged = dict(existing)
+        seen_paths = set(merged.values())
+        for key, value in incoming.items():
+            path = str(value)
+            if path in seen_paths:
+                continue
+            merged[str(key)] = path
+            seen_paths.add(path)
+        return merged

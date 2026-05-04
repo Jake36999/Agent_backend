@@ -49,6 +49,18 @@ The investigation tools (`mcp_investigation_*`) are also exposed through `backen
 
 The Node process validates public tool schemas and forwards tool calls with a per-request HMAC auth envelope.
 
+For normal LM Studio agent runs, prefer exposing the compact high-level workflow tool instead of the full investigation tool set:
+
+```json
+{
+  "type": "plugin",
+  "id": "mcp/aletheia-fastmcp-shim",
+  "allowed_tools": ["mcp_agent_workflow_run"]
+}
+```
+
+LM Studio's native `/api/v1/chat` integrations support `allowed_tools` for plugin and ephemeral MCP servers. Keeping only `mcp_agent_workflow_run` visible reduces prompt pressure and lets the backend deterministic workflow controller perform bounded Tool Assist execution. The lower-level `mcp_investigation_*` tools remain available for manual debugging and direct smoke tests.
+
 ## LM Studio embedding model readiness
 
 The daemon automatically manages LM Studio embedding model loading:
@@ -126,6 +138,14 @@ Live integration tests that require LM Studio, real Chroma state, PDF/OCR binari
 ## Agent Workflow Controller Scaffold (Opt-in)
 
 The Python daemon includes an opt-in deterministic workflow controller for Tool Assist investigations. It does not replace the existing MCP tools, the daemon TCP bridge, or the LM Studio FastMCP shim. It is a separate local runner for operators who want bounded model reasoning around deterministic backend tool execution.
+
+LM Studio can invoke the workflow in one MCP call through `mcp_agent_workflow_run`. For MCP/FastMCP calls, the defaults are deterministic:
+
+- `allow_ingest=false`
+- `include_report_preview=false`
+- `use_model_phases=false`
+
+This avoids nested model-calls-model behavior when the caller is already LM Studio. Set `use_model_phases=true` only for explicit operator-controlled experiments.
 
 Example:
 

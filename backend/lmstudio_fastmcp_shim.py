@@ -126,6 +126,35 @@ def call_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool()
+def mcp_agent_workflow_run(
+    objective: str,
+    target_repo: str,
+    profile: str = "safe",
+    allow_ingest: bool = False,
+    include_report_preview: bool = False,
+    use_model_phases: bool = False,
+) -> str:
+    """Run the deterministic Tool Assist workflow once.
+
+    target_repo must be the exact absolute local path to investigate.
+    Do not infer, abbreviate, or invent target_repo.
+    Recommended LM Studio exposure is allowed_tools = ["mcp_agent_workflow_run"].
+    """
+    result = call_tool(
+        "mcp_agent_workflow_run",
+        {
+            "objective": objective,
+            "target_repo": target_repo,
+            "profile": profile,
+            "allow_ingest": allow_ingest,
+            "include_report_preview": include_report_preview,
+            "use_model_phases": use_model_phases,
+        },
+    )
+    return as_pretty_json(result)
+
+
+@mcp.tool()
 def mcp_scout_workspace(
     project_id: str,
     absolute_path: str,

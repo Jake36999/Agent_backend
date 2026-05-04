@@ -266,6 +266,18 @@ class AgentWorkflowTests(unittest.TestCase):
         self.assertIn("response_format", posted[-1][1])
         self.assertNotIn("reasoning", posted[-1][1])
 
+    def test_workflow_lm_client_defaults_model_when_env_missing(self):
+        with mock.patch.dict(os.environ, {"ALETHEIA_AGENT_MODEL": ""}, clear=False):
+            client = LMStudioClient()
+        payload = client._payload(
+            [{"role": "user", "content": "x"}],
+            {"name": "s"},
+            "low",
+            10,
+            include_reasoning=True,
+        )
+        self.assertEqual(payload["model"], "qwen3-8b")
+
     def test_lmstudio_retries_without_reasoning_when_native_endpoint_rejects_it(self):
         attempts = []
 

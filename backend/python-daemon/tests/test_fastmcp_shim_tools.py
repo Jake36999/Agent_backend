@@ -7,6 +7,7 @@ class FastMcpShimTests(unittest.TestCase):
         shim_path = Path(__file__).resolve().parents[2] / "lmstudio_fastmcp_shim.py"
         source = shim_path.read_text(encoding="utf-8")
         for signature in [
+            "def mcp_agent_workflow_run(",
             "def mcp_investigation_start(",
             "def mcp_investigation_filemap(",
             "def mcp_investigation_validate_manifest(",
@@ -14,6 +15,8 @@ class FastMcpShimTests(unittest.TestCase):
             "def mcp_investigation_compile_handoff(",
         ]:
             self.assertIn(signature, source)
+        self.assertIn("target_repo must be the exact absolute local path to investigate", source)
+        self.assertIn('allowed_tools = ["mcp_agent_workflow_run"]', source)
 
 
 if __name__ == "__main__":
