@@ -1,0 +1,47 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/runtime.py
+@@
++from orchestrator.active_partition.watcher import ActivePartitionWatcher
++from orchestrator.memory.snapshots import SnapshotMemoryService
++from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
++from orchestrator.candidate_analysis.service import CandidateAnalysisService
++from orchestrator.patching.service import PatchGenerationService
++from orchestrator.patching.apply import PatchApplyService
+@@
+ class Runtime:
+@@
++    active_partition_watcher: ActivePartitionWatcher | None = None
++    snapshot_memory: SnapshotMemoryService | None = None
++    conversation_summary_ingestor: ConversationSummaryIngestor | None = None
++    candidate_analysis: CandidateAnalysisService | None = None
++    patch_generation: PatchGenerationService | None = None
++    patch_apply: PatchApplyService | None = None
+@@
+ def build_runtime(config: RuntimeConfig) -> Runtime:
+@@
++    snapshot_memory = SnapshotMemoryService(config.queue_db_path, chroma_manager=chroma_manager)
++    conversation_summary_ingestor = ConversationSummaryIngestor()
++    candidate_analysis = CandidateAnalysisService()
++    patch_generation = PatchGenerationService(config.queue_db_path)
++    patch_apply = PatchApplyService(
++        config.queue_db_path,
++        config.state_dir / "rollback",
++        allowed_roots=list(config.allowed_roots),
++    )
++
++    active_partition_watcher = None
++    if config.enable_lmstudio_watcher and config.lmstudio_conversations_dir:
++        active_partition_watcher = ActivePartitionWatcher(
++            active_partition_service,
++            config.lmstudio_conversations_dir,
++            settle_ms=config.active_partition_settle_ms,
++        )
+@@
++        active_partition_watcher=active_partition_watcher,
++        snapshot_memory=snapshot_memory,
++        conversation_summary_ingestor=conversation_summary_ingestor,
++        candidate_analysis=candidate_analysis,
++        patch_generation=patch_generation,
++        patch_apply=patch_apply,
+     )
+*** End Patch

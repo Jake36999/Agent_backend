@@ -1,0 +1,73 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/agent_workflow/runner.py
+@@
++from orchestrator.candidate_analysis.models import CandidateAnalysisInput
+@@
+ def run_agent_workflow(...):
+@@
++    # Skill selection is internal. Do not expose skill_id as a public MCP argument.
++    selected_skill = None
++    if getattr(runtime, "skill_registry", None) is not None:
++        manifests = runtime.skill_registry.list_verified()
++        selected = runtime.skill_selector.select_skill(objective, manifests) if hasattr(runtime, "skill_selector") else None
++        if selected:
++            selected_skill = {
++                "skill_id": selected["selected_skill_id"],
++                "candidate_analysis": selected.get("candidate_analysis", []),
++            }
++            artifacts["selected_skill"] = selected_skill
++
++    # Deterministic candidate_analysis mode. Keep internal unless a future public contract is reviewed.
++    if selected_skill and selected_skill.get("skill_id") == "candidate_analysis_v1" and runtime.candidate_analysis:
++        candidate_result = runtime.candidate_analysis.analyze(CandidateAnalysisInput(
++            objective=objective,
++            target_repo=str(target_repo),
++            logs=None,
++            manifest_csv=artifacts.get("manifest_csv_content"),
++            workspace_summary=artifacts.get("workspace_summary"),
++            rag_context=artifacts.get("rag_context"),
++        ))
++        artifacts["candidate_analysis"] = candidate_result
++
++    # T2 patch generation remains artifact-only. The unified_diff must already be proposed by the workflow.
++    if selected_skill and selected_skill.get("skill_id") == "patch_generate_v1" and runtime.patch_generation:
++        proposed_diff = artifacts.get("unified_diff")
++        if proposed_diff:
++            patch_result = runtime.patch_generation.create_patch_artifact(
++                objective=objective,
++                target_repo=Path(target_repo),
++                unified_diff=str(proposed_diff),
++                selected_skill_id="patch_generate_v1",
++                project_id=active_partition.active_project_id if active_partition else None,
++                project_scope_hash=active_partition.active_project_scope_hash if active_partition else None,
++                run_id=run_id,
++                test_commands=list(artifacts.get("test_commands", [])),
++            )
++            artifacts["patch_id"] = patch_result.get("patch_id")
++
++    # Snapshot after workflow result is compacted.
++    if runtime.snapshot_memory:
++        snapshot_result = runtime.snapshot_memory.record_workflow_snapshot(
++            workflow_result={"run_id": run_id, "summary": summary, "artifacts": artifacts},
++            active_partition=active_partition,
++            selected_skill=selected_skill,
++        )
++        artifacts["snapshot_id"] = snapshot_result.get("snapshot_id")
++
++    # Optional deterministic summary ingestion. Commit only if policy allows and memory service is available.
++    if runtime.conversation_summary_ingestor and runtime.memory_service:
++        candidate = runtime.conversation_summary_ingestor.build_memory_candidate(
++            conversation_events=[{"type": "completed_artifact", "summary": summary}],
++            target_repo=str(target_repo),
++            project_id=active_partition.active_project_id if active_partition else None,
++            source_artifacts=[{"artifact": key, "path": value, "verified": True} for key, value in artifacts.items() if key.endswith("_path")],
++            write_intent="workflow snapshot summary",
++            selected_skill=selected_skill,
++        )
++        if candidate.get("write_allowed") and active_partition:
++            memory_result = runtime.conversation_summary_ingestor.commit_if_allowed(
++                candidate_result=candidate,
++                memory_service=runtime.memory_service,
++            )
++            artifacts["summary_memory_result"] = memory_result
+*** End Patch

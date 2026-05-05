@@ -1,0 +1,25 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/agent_workflow/state.py
+@@
+ class WorkflowState:
+@@
++    selected_skill: dict[str, object] | None = None
++    candidate_analysis: dict[str, object] | None = None
++    snapshot_id: str | None = None
++    patch_id: str | None = None
++    rollback_artifact: str | None = None
+@@
+     def to_dict(self) -> dict[str, object]:
+@@
++        if self.selected_skill:
++            payload["selected_skill"] = self.selected_skill
++        if self.candidate_analysis:
++            payload["candidate_analysis"] = self.candidate_analysis
++        if self.snapshot_id:
++            payload.setdefault("artifacts", {})["snapshot_id"] = self.snapshot_id
++        if self.patch_id:
++            payload.setdefault("artifacts", {})["patch_id"] = self.patch_id
++        if self.rollback_artifact:
++            payload.setdefault("artifacts", {})["rollback_artifact"] = self.rollback_artifact
+         return payload
+*** End Patch

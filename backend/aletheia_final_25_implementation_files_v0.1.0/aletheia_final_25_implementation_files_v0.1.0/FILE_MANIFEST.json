@@ -1,0 +1,274 @@
+{
+  "package": "aletheia_final_25_implementation_files_v0.1.0",
+  "generated_at": "2026-05-05T00:35:34.518797+00:00",
+  "assumptions": [
+    "LMStudioManager duplicate embedding load bug is already fixed",
+    "skill registry phase 1 exists",
+    "mcp_agent_workflow_run remains the main public entry point",
+    "skill manifests are metadata-first and SKILL.md is lazy-loaded after selection"
+  ],
+  "new_files": [
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/active_partition/__pycache__/watcher.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/active_partition/__pycache__/watcher.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/active_partition/watcher.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/active_partition/watcher.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/agent_workflow/expansion_context.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/agent_workflow/expansion_context.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/__init__.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/__init__.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/__pycache__/__init__.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/__pycache__/__init__.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/__pycache__/models.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/__pycache__/models.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/__pycache__/scorer.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/__pycache__/scorer.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/__pycache__/service.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/__pycache__/service.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/models.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/models.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/scorer.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/scorer.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/candidate_analysis/service.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/candidate_analysis/service.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/memory/__pycache__/conversation_summary.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/memory/__pycache__/conversation_summary.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/memory/__pycache__/snapshots.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/memory/__pycache__/snapshots.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/memory/conversation_summary.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/memory/conversation_summary.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/memory/snapshots.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/memory/snapshots.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__init__.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__init__.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/__init__.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/__init__.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/apply.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/apply.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/diff.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/diff.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/guardrails.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/guardrails.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/models.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/models.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/repo.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/repo.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/service.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/service.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/snapshots.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/snapshots.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/__pycache__/test_runner.cpython-313.pyc",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/__pycache__/test_runner.cpython-313.pyc",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/apply.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/apply.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/diff.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/diff.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/guardrails.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/guardrails.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/models.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/models.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/repo.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/repo.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/service.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/service.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/snapshots.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/snapshots.py",
+      "purpose": "new backend implementation file"
+    },
+    {
+      "path": "generated_files/backend/python-daemon/orchestrator/patching/test_runner.py",
+      "repo_target_path": "backend/python-daemon/orchestrator/patching/test_runner.py",
+      "purpose": "new backend implementation file"
+    }
+  ],
+  "patch_fragments": [
+    {
+      "path": "patch_fragments/adapters.patch",
+      "target": "backend/python-daemon/orchestrator/adapters.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/agent_workflow_mcp_tool.patch",
+      "target": "backend/python-daemon/orchestrator/agent_workflow/mcp_tool.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/agent_workflow_runner.patch",
+      "target": "backend/python-daemon/orchestrator/agent_workflow/runner.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/agent_workflow_state.patch",
+      "target": "backend/python-daemon/orchestrator/agent_workflow/state.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/config.patch",
+      "target": "backend/python-daemon/orchestrator/config.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/db_bootstrap.patch",
+      "target": "backend/python-daemon/orchestrator/db_bootstrap.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/main.patch",
+      "target": "backend/python-daemon/orchestrator/main.py",
+      "purpose": "reviewable integration patch fragment"
+    },
+    {
+      "path": "patch_fragments/runtime.patch",
+      "target": "backend/python-daemon/orchestrator/runtime.py",
+      "purpose": "reviewable integration patch fragment"
+    }
+  ],
+  "tests": [
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_active_partition_watcher.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_active_partition_watcher.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_candidate_analysis_mode.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_candidate_analysis_mode.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_conversation_summary_ingest.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_conversation_summary_ingest.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_patch_apply_and_test.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_patch_apply_and_test.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_patch_generate.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_patch_generate.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/__pycache__/test_snapshot_memory.cpython-313.pyc",
+      "repo_target_path": "python-daemon/tests/__pycache__/test_snapshot_memory.cpython-313.pyc"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_active_partition_watcher.py",
+      "repo_target_path": "python-daemon/tests/test_active_partition_watcher.py"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_candidate_analysis_mode.py",
+      "repo_target_path": "python-daemon/tests/test_candidate_analysis_mode.py"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_conversation_summary_ingest.py",
+      "repo_target_path": "python-daemon/tests/test_conversation_summary_ingest.py"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_patch_apply_and_test.py",
+      "repo_target_path": "python-daemon/tests/test_patch_apply_and_test.py"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_patch_generate.py",
+      "repo_target_path": "python-daemon/tests/test_patch_generate.py"
+    },
+    {
+      "path": "tests/python-daemon/tests/test_snapshot_memory.py",
+      "repo_target_path": "python-daemon/tests/test_snapshot_memory.py"
+    }
+  ],
+  "notes": [
+    "Patch fragments are integration aids; review against current file contents before applying.",
+    "No repo tests were run by this package generator.",
+    "Node contracts are intentionally unchanged."
+  ]
+}

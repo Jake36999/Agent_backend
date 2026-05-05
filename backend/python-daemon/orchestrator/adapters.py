@@ -11,7 +11,11 @@ from .active_partition.models import ActivePartition, MemoryProject
 from .active_partition.service import ActivePartitionService, ActivePartitionServiceError
 from .agent_workflow.bridge_client import InProcessToolClient
 from .agent_workflow.mcp_tool import run_agent_workflow
+from .candidate_analysis.service import CandidateAnalysisService
+from .memory.conversation_summary import ConversationSummaryIngestor
 from .memory.service import MemoryService
+from .memory.snapshots import SnapshotMemoryService
+from .patching.service import PatchGenerationService
 from .tool_assist_adapter import ToolAssistAdapter
 
 import yaml
@@ -189,6 +193,10 @@ class ToolAdapters:
         tool_assist: ToolAssistAdapter | None = None,
         active_partition: ActivePartitionService | None = None,
         memory_service: MemoryService | None = None,
+        snapshot_memory: SnapshotMemoryService | None = None,
+        conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
+        candidate_analysis: CandidateAnalysisService | None = None,
+        patch_generation: PatchGenerationService | None = None,
         allowed_roots: tuple[Path, ...] | None = None,
         skill_registry_root: Path | None = None,
         queue_db_path: Path | None = None,
@@ -201,6 +209,10 @@ class ToolAdapters:
         self.tool_assist = tool_assist or ToolAssistAdapter()
         self.active_partition = active_partition
         self.memory_service = memory_service
+        self.snapshot_memory = snapshot_memory
+        self.conversation_summary_ingestor = conversation_summary_ingestor
+        self.candidate_analysis = candidate_analysis
+        self.patch_generation = patch_generation
         self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
         self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
         if queue_db_path is not None:
@@ -351,6 +363,11 @@ class ToolAdapters:
                     skill_registry_root=self.skill_registry_root,
                     queue_db_path=self.queue_db_path,
                     tool_client=self._workflow_tool_client(),
+                    active_partition=self.active_partition,
+                    memory_service=self.memory_service,
+                    snapshot_memory=self.snapshot_memory,
+                    conversation_summary_ingestor=self.conversation_summary_ingestor,
+                    candidate_analysis=self.candidate_analysis,
                 )
             if tool_name == "mcp_ingest_target":
                 if self.semantic_memory is None:

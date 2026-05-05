@@ -241,6 +241,77 @@ ON skill_manifests(project_scope_hash);
 """
 
 
+QUEUE_MIGRATION_0005 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS snapshot_records (
+  snapshot_id TEXT PRIMARY KEY,
+  project_id TEXT,
+  project_scope_hash TEXT,
+  run_id TEXT,
+  session_id TEXT,
+  source_tool TEXT NOT NULL,
+  archive_yaml_path TEXT,
+  manifest_csv_path TEXT,
+  final_markdown_path TEXT,
+  final_python_bundle_path TEXT,
+  state_path TEXT,
+  summary TEXT NOT NULL,
+  artifact_json TEXT NOT NULL,
+  selected_skill_json TEXT,
+  created_at TEXT NOT NULL,
+  index_status TEXT NOT NULL DEFAULT 'pending' CHECK (index_status IN ('pending', 'indexed', 'failed')),
+  indexed_at TEXT,
+  index_error TEXT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_records_project_scope_hash
+ON snapshot_records(project_scope_hash);
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_records_run_id
+ON snapshot_records(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_records_index_status
+ON snapshot_records(index_status);
+"""
+
+
+QUEUE_MIGRATION_0006 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS patch_artifacts (
+  patch_id TEXT PRIMARY KEY,
+  run_id TEXT,
+  project_id TEXT,
+  project_scope_hash TEXT,
+  selected_skill_id TEXT,
+  target_repo TEXT NOT NULL,
+  status TEXT NOT NULL,
+  patch_path TEXT NOT NULL,
+  diff_sha256 TEXT NOT NULL,
+  affected_paths_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  validation_status TEXT NOT NULL,
+  validation_error TEXT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_patch_artifacts_run_id
+ON patch_artifacts(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_patch_artifacts_project_scope_hash
+ON patch_artifacts(project_scope_hash);
+
+CREATE INDEX IF NOT EXISTS idx_patch_artifacts_status
+ON patch_artifacts(status);
+"""
+
+
 CONTROL_MIGRATION_0001 = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -288,6 +359,8 @@ QUEUE_MIGRATIONS = (
     ("0002_active_partition_memory", QUEUE_MIGRATION_0002),
     ("0003_memory_index_state", None),
     ("0004_skill_manifests", QUEUE_MIGRATION_0004),  # noqa: F821
+    ("0005_snapshot_patch_records", QUEUE_MIGRATION_0005),
+    ("0006_patch_artifacts", QUEUE_MIGRATION_0006),
 )
 CONTROL_MIGRATIONS = (("0001_initial", CONTROL_MIGRATION_0001),)
 

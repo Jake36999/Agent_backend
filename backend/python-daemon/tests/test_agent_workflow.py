@@ -10,10 +10,13 @@ from orchestrator.agent_workflow.mcp_tool import run_agent_workflow
 from orchestrator.adapters import ToolAdapters
 from orchestrator.active_partition.models import ActivePartition
 from orchestrator.active_partition.repo import ActivePartitionRepository
+from orchestrator.candidate_analysis.service import CandidateAnalysisService
 from orchestrator.chroma_manager import ChromaConfig, ChromaManager
 from orchestrator.db_bootstrap import bootstrap_databases
+from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
 from orchestrator.memory.repo import MemoryRepository
 from orchestrator.memory.service import MemoryService
+from orchestrator.memory.snapshots import SnapshotMemoryService
 from orchestrator.active_partition.service import ActivePartitionService
 from orchestrator.skills.registry import SkillRegistry as RealSkillRegistry
 
@@ -70,6 +73,51 @@ class FakeBridgeClient:
         return {"ok": False, "status": "ERROR", "summary": f"unexpected tool {tool_name}", "artifacts": {}}
 
 
+class FakeManifestBridgeClient:
+    def __init__(self):
+        self.target_repo: Path | None = None
+        self.output_root: Path | None = None
+
+    def call_tool(self, tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        if tool_name == "mcp_investigation_start":
+            self.target_repo = Path(str(args["target_repo"])).resolve()
+            self.output_root = self.target_repo.parent / "local_tool_assist_outputs" / "sessions" / "s1"
+            self.output_root.mkdir(parents=True, exist_ok=True)
+            return {
+                "ok": True,
+                "status": "PASS",
+                "summary": "session started",
+                "artifacts": {"session_path": str(self.output_root / "session.yaml"), "session_yaml": str(self.output_root / "session.yaml")},
+            }
+        if tool_name == "mcp_investigation_filemap":
+            assert self.target_repo is not None
+            assert self.output_root is not None
+            source = self.target_repo / "orchestrator" / "active_partition" / "service.py"
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("class ActivePartitionService: pass\n", encoding="utf-8")
+            generated = self.target_repo / "final_handoff_bundle_123.py"
+            generated.write_text("bundle\n", encoding="utf-8")
+            doctor = self.output_root / "intermediate" / "manifest_doctor.md"
+            doctor.parent.mkdir(parents=True, exist_ok=True)
+            doctor.write_text("doctor\n", encoding="utf-8")
+            manifest = self.output_root / "manifest.csv"
+            manifest.write_text(
+                "root,rel_path,abs_path,ext,size,mtime_iso,sha1\n"
+                f"{self.target_repo},orchestrator/active_partition/service.py,{source},.py,1,2026-01-01T00:00:00Z,abc\n"
+                f"{self.target_repo},final_handoff_bundle_123.py,{generated},.py,1,2026-01-01T00:00:00Z,def\n"
+                f"{self.target_repo},reports/manifest_doctor.md,{doctor},.md,1,2026-01-01T00:00:00Z,ghi\n",
+                encoding="utf-8",
+            )
+            return {"ok": True, "status": "PASS", "summary": "file map complete", "artifacts": {"manifest_csv": str(manifest)}}
+        if tool_name == "mcp_investigation_validate_manifest":
+            return {"ok": True, "status": "PASS", "summary": "manifest validated", "artifacts": {"manifest_health_json": "health.json"}}
+        if tool_name == "mcp_investigation_read_report":
+            return {"ok": True, "status": "PASS", "summary": "report read", "content": "raw report", "artifacts": {"manifest_doctor_md": "doctor.md"}}
+        if tool_name == "mcp_investigation_compile_handoff":
+            return {"ok": True, "status": "COMPLETE", "summary": "handoff complete", "artifacts": {"final_markdown": "final.md", "archive_yaml": "archive.yaml"}}
+        return {"ok": False, "status": "ERROR", "summary": f"unexpected tool {tool_name}", "artifacts": {}}
+
+
 class FakeCollection:
     def upsert(self, **kwargs):
         return None
@@ -84,6 +132,31 @@ class FakeChromaClient:
 
     def get_or_create_collection(self, name):
         return self.collection
+
+
+class FakeSnapshotChroma:
+    def __init__(self):
+        self.calls = []
+
+    def upsert_chunks(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"chunks_indexed": len(kwargs["chunks"])}
+
+
+class FakeMemoryService:
+    def __init__(self):
+        self.calls = []
+
+    def commit_memory(self, **kwargs):
+        self.calls.append(kwargs)
+        return {
+            "ok": True,
+            "status": "COMMITTED",
+            "memory_id": "memory-1",
+            "index_status": "indexed",
+            "project_id": "p",
+            "project_scope_hash": "scope",
+        }
 
 
 class FakeSkillRegistry:
@@ -300,6 +373,81 @@ class WorkflowToolTests(unittest.TestCase):
             self.assertTrue(result["ok"])
             self.assertEqual(result["artifacts"]["selected_skill"]["skill_id"], "candidate_analysis_v1")
             self.assertIn("capabilities", result["artifacts"]["selected_skill"])
+
+    def test_workflow_adds_round_one_compact_artifacts_when_services_available(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bootstrap_databases(root)
+            active_repo = ActivePartitionRepository(root / "queue.db")
+            active_repo.set_active_partition(
+                ActivePartition(
+                    client_id="local-lmstudio",
+                    active_project_id="p",
+                    active_project_scope_hash="scope",
+                    active_conversation_id="chat",
+                    conversation_path=str(root / "conversations" / "project" / "chat.conversation.json"),
+                    confidence="high",
+                    source_event="test",
+                    updated_at="now",
+                )
+            )
+            active = ActivePartitionService(active_repo, conversations_root=root / "conversations", allowed_roots=(root,))
+            snapshot_chroma = FakeSnapshotChroma()
+            memory = FakeMemoryService()
+            state_dir = root / "agent-workflows"
+
+            with patch("orchestrator.agent_workflow.mcp_tool.SkillRegistry", lambda queue_db_path: FakeSkillRegistry(queue_db_path, BUG_TRIAGE_MANIFESTS)):
+                result = run_agent_workflow(
+                    objective="Rank candidate files for the likely fix location.",
+                    target_repo=str(root),
+                    profile="safe",
+                    state_dir=state_dir,
+                    allowed_roots=(root,),
+                    queue_db_path=root / "queue.db",
+                    bridge_client=FakeBridgeClient(),
+                    active_partition=active,
+                    memory_service=memory,  # type: ignore[arg-type]
+                    snapshot_memory=SnapshotMemoryService(root / "queue.db", snapshot_chroma),
+                    conversation_summary_ingestor=ConversationSummaryIngestor(),
+                    candidate_analysis=CandidateAnalysisService(),
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertIn("snapshot_id", result["artifacts"])
+            self.assertIn("candidate_analysis", result["artifacts"])
+            self.assertIn("ranked_candidates", result["artifacts"]["candidate_analysis"])
+            self.assertEqual(result["artifacts"]["summary_memory_result"]["memory_id"], "memory-1")
+            self.assertEqual(len(snapshot_chroma.calls), 1)
+            self.assertEqual(len(memory.calls), 1)
+
+    def test_workflow_candidate_analysis_reads_manifest_and_excludes_artifacts_without_raw_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_dir = root / "agent-workflows"
+            bridge = FakeManifestBridgeClient()
+
+            with patch("orchestrator.agent_workflow.mcp_tool.SkillRegistry", lambda queue_db_path: FakeSkillRegistry(queue_db_path, BUG_TRIAGE_MANIFESTS)):
+                result = run_agent_workflow(
+                    objective="Rank candidate files for active partition likely files.",
+                    target_repo=str(root),
+                    profile="safe",
+                    state_dir=state_dir,
+                    allowed_roots=(root,),
+                    bridge_client=bridge,
+                    candidate_analysis=CandidateAnalysisService(),
+                )
+
+            state_text = Path(result["state_path"]).read_text(encoding="utf-8")
+            candidate_result = result["artifacts"]["candidate_analysis"]
+            paths = [item["rel_path"] for item in candidate_result["ranked_candidates"]]
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(candidate_result["status"], "OK")
+            self.assertIn("orchestrator/active_partition/service.py", paths)
+            self.assertNotIn("final_handoff_bundle_123.py", paths)
+            self.assertNotIn("reports/manifest_doctor.md", paths)
+            self.assertNotIn("root,rel_path,abs_path", json.dumps(result))
+            self.assertNotIn("root,rel_path,abs_path", state_text)
 
     def test_workflow_selects_refactor_plan_skill_metadata(self):
         with tempfile.TemporaryDirectory() as tmp:

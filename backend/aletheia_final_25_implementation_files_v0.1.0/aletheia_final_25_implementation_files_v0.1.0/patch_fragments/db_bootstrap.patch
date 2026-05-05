@@ -1,0 +1,77 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/db_bootstrap.py
+@@
+ # Add to the queue.db migration sequence after 0004_skill_manifests.
++# 0005_snapshot_patch_records
++
++CREATE TABLE IF NOT EXISTS snapshot_records (
++  snapshot_id TEXT PRIMARY KEY,
++  project_id TEXT,
++  project_scope_hash TEXT,
++  run_id TEXT,
++  session_id TEXT,
++  source_tool TEXT NOT NULL,
++  archive_yaml_path TEXT,
++  manifest_csv_path TEXT,
++  final_markdown_path TEXT,
++  final_python_bundle_path TEXT,
++  state_path TEXT,
++  summary TEXT NOT NULL,
++  artifact_json TEXT NOT NULL,
++  selected_skill_json TEXT,
++  created_at TEXT NOT NULL,
++  index_status TEXT NOT NULL DEFAULT 'pending',
++  indexed_at TEXT,
++  index_error TEXT
++) STRICT, WITHOUT ROWID;
++
++CREATE INDEX IF NOT EXISTS idx_snapshot_records_project_scope_hash
++ON snapshot_records(project_scope_hash);
++
++CREATE INDEX IF NOT EXISTS idx_snapshot_records_run_id
++ON snapshot_records(run_id);
++
++CREATE INDEX IF NOT EXISTS idx_snapshot_records_index_status
++ON snapshot_records(index_status);
++
++CREATE TABLE IF NOT EXISTS patch_artifacts (
++  patch_id TEXT PRIMARY KEY,
++  project_id TEXT,
++  project_scope_hash TEXT,
++  run_id TEXT,
++  selected_skill_id TEXT,
++  objective TEXT NOT NULL,
++  unified_diff TEXT NOT NULL,
++  affected_files_json TEXT NOT NULL,
++  test_commands_json TEXT NOT NULL,
++  guardrail_checks_json TEXT NOT NULL,
++  audit_state_json TEXT NOT NULL,
++  status TEXT NOT NULL,
++  created_at TEXT NOT NULL
++) STRICT, WITHOUT ROWID;
++
++CREATE INDEX IF NOT EXISTS idx_patch_artifacts_project_scope_hash
++ON patch_artifacts(project_scope_hash);
++
++CREATE INDEX IF NOT EXISTS idx_patch_artifacts_run_id
++ON patch_artifacts(run_id);
++
++CREATE INDEX IF NOT EXISTS idx_patch_artifacts_status
++ON patch_artifacts(status);
++
++CREATE TABLE IF NOT EXISTS file_snapshots (
++  snapshot_id TEXT PRIMARY KEY,
++  patch_id TEXT NOT NULL,
++  absolute_path TEXT NOT NULL,
++  file_sha_before TEXT NOT NULL,
++  content_before_path TEXT NOT NULL,
++  created_at TEXT NOT NULL
++) STRICT, WITHOUT ROWID;
++
++CREATE INDEX IF NOT EXISTS idx_file_snapshots_patch_id
++ON file_snapshots(patch_id);
++
++INSERT INTO schema_migrations(version, applied_at)
++SELECT '0005_snapshot_patch_records', CURRENT_TIMESTAMP
++WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE version = '0005_snapshot_patch_records');
+*** End Patch

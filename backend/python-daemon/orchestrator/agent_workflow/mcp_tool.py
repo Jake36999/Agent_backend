@@ -7,6 +7,11 @@ from typing import Any
 from .bridge_client import TcpBridgeClient
 from .runner import WorkflowRunner
 from .state import default_state_dir
+from orchestrator.active_partition.service import ActivePartitionService
+from orchestrator.candidate_analysis.service import CandidateAnalysisService
+from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
+from orchestrator.memory.service import MemoryService
+from orchestrator.memory.snapshots import SnapshotMemoryService
 from orchestrator.skills.importer import SkillImporter
 from orchestrator.skills.registry import SkillRegistry
 from orchestrator.skills.selection import select_skill
@@ -197,6 +202,11 @@ def run_agent_workflow(
     queue_db_path: Path | None = None,
     max_steps: int | None = None,
     max_tool_result_chars: int | None = None,
+    active_partition: ActivePartitionService | None = None,
+    memory_service: MemoryService | None = None,
+    snapshot_memory: SnapshotMemoryService | None = None,
+    conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
+    candidate_analysis: CandidateAnalysisService | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -226,6 +236,11 @@ def run_agent_workflow(
         state_dir=state_dir,
         max_steps=max_steps,
         max_tool_result_chars=max_tool_result_chars,
+        active_partition=active_partition,
+        memory_service=memory_service,
+        snapshot_memory=snapshot_memory,
+        conversation_summary_ingestor=conversation_summary_ingestor,
+        candidate_analysis=candidate_analysis,
     )
     try:
         _, response = runner.run(

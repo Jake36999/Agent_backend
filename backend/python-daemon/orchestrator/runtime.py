@@ -5,11 +5,16 @@ from dataclasses import dataclass
 from .adapters import FileToolAdapter, ReadOnlySqliteAdapter, ToolAdapters
 from .active_partition.repo import ActivePartitionRepository
 from .active_partition.service import ActivePartitionService
+from .active_partition.watcher import ActivePartitionWatcher
 from .bridge_server import BridgeSecurity
+from .candidate_analysis.service import CandidateAnalysisService
 from .chroma_manager import ChromaConfig, ChromaManager
 from .config import RuntimeConfig
+from .memory.conversation_summary import ConversationSummaryIngestor
 from .memory.repo import MemoryRepository
 from .memory.service import MemoryService
+from .memory.snapshots import SnapshotMemoryService
+from .patching.service import PatchGenerationService
 from .tool_assist_adapter import ToolAssistAdapter
 from .db_bootstrap import bootstrap_databases
 from .execution_loop import ExecutionLoop
@@ -30,6 +35,11 @@ class RuntimeComponents:
     tool_adapters: ToolAdapters
     execution_loop: ExecutionLoop
     bridge_security: BridgeSecurity
+    active_partition_watcher: ActivePartitionWatcher | None = None
+    snapshot_memory: SnapshotMemoryService | None = None
+    conversation_summary_ingestor: ConversationSummaryIngestor | None = None
+    candidate_analysis: CandidateAnalysisService | None = None
+    patch_generation: PatchGenerationService | None = None
 
     def health(self) -> dict[str, object]:
         return {
@@ -49,6 +59,8 @@ class RuntimeComponents:
         return self.repo.list_dead_letters(limit)
 
     def close(self) -> None:
+        if self.active_partition_watcher is not None:
+            self.active_partition_watcher.stop(timeout=5.0)
         system = getattr(getattr(self.chroma, "client", None), "_system", None)
         stop = getattr(system, "stop", None)
         if callable(stop):
@@ -80,6 +92,18 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         allowed_roots=config.allowed_roots,
     )
     memory_service = MemoryService(memory_repo, active_partition_repo, chroma)
+    snapshot_memory = SnapshotMemoryService(repo.queue_db, chroma)
+    conversation_summary_ingestor = ConversationSummaryIngestor()
+    candidate_analysis = CandidateAnalysisService()
+    patch_generation = PatchGenerationService(repo.queue_db, config.state_dir / "patch_artifacts", allowed_roots=config.allowed_roots)
+    active_partition_watcher = None
+    if config.enable_lmstudio_watcher:
+        active_partition_watcher = ActivePartitionWatcher(
+            active_partition,
+            config.lmstudio_conversations_dir,
+            settle_ms=config.active_partition_settle_ms,
+        )
+        active_partition_watcher.start()
     file_tools = FileToolAdapter(config.allowed_roots)
     sqlite_tools = ReadOnlySqliteAdapter(config.allowed_roots)
     scout = WorkspaceScout(config.allowed_roots)
@@ -96,6 +120,10 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         tool_assist=ToolAssistAdapter(),
         active_partition=active_partition,
         memory_service=memory_service,
+        snapshot_memory=snapshot_memory,
+        conversation_summary_ingestor=conversation_summary_ingestor,
+        candidate_analysis=candidate_analysis,
+        patch_generation=patch_generation,
         allowed_roots=config.allowed_roots,
         skill_registry_root=config.skill_registry_root,
         queue_db_path=repo.queue_db,
@@ -108,4 +136,9 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         tool_adapters=tool_adapters,
         execution_loop=ExecutionLoop(repo, tool_adapters=tool_adapters),
         bridge_security=BridgeSecurity(shared_secret=config.bridge_shared_secret, enable_admin_bridge=config.enable_admin_bridge),
+        active_partition_watcher=active_partition_watcher,
+        snapshot_memory=snapshot_memory,
+        conversation_summary_ingestor=conversation_summary_ingestor,
+        candidate_analysis=candidate_analysis,
+        patch_generation=patch_generation,
     )

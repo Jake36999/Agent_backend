@@ -49,6 +49,8 @@ class RuntimeDaemonTests(unittest.TestCase):
             self.assertEqual(config.project_root, root.resolve())
             self.assertEqual(config.project_id, root.name)
             self.assertEqual(config.enable_admin_bridge, False)
+            self.assertEqual(config.enable_lmstudio_watcher, False)
+            self.assertEqual(config.active_partition_settle_ms, 750)
             self.assertEqual(config.bridge_host, "127.0.0.1")
             self.assertEqual(config.bridge_port, 4567)
 
@@ -84,8 +86,33 @@ class RuntimeDaemonTests(unittest.TestCase):
                 self.assertIsNotNone(runtime.tool_adapters.semantic_memory)
                 self.assertIsNotNone(runtime.tool_adapters.workspace_scout)
                 self.assertIs(runtime.execution_loop.repo, runtime.repo)
+                self.assertIsNone(runtime.active_partition_watcher)
             finally:
                 runtime.close()
+
+    def test_build_runtime_starts_and_closes_lmstudio_watcher_only_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            conversations = root / "conversations"
+            conversations.mkdir()
+            config = RuntimeConfig.from_env(
+                {
+                    "ALETHEIA_PROJECT_ROOT": str(root),
+                    "ALETHEIA_STATE_DIR": str(root / "state"),
+                    "ALETHEIA_ALLOWED_ROOTS": str(root),
+                    "ALETHEIA_CHROMA_PATH": str(root / "chroma"),
+                    "ALETHEIA_LMSTUDIO_CONVERSATIONS_DIR": str(conversations),
+                    "ALETHEIA_ENABLE_LMSTUDIO_WATCHER": "true",
+                    "ALETHEIA_ACTIVE_PARTITION_SETTLE_MS": "0",
+                }
+            )
+
+            runtime = build_runtime(config)
+
+            self.assertIsNotNone(runtime.active_partition_watcher)
+            self.assertTrue(runtime.active_partition_watcher.is_running)
+            runtime.close()
+            self.assertFalse(runtime.active_partition_watcher.is_running)
 
     def test_runtime_wires_ocr_provider_into_pdf_ingest(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,8 +205,14 @@ class RuntimeDaemonTests(unittest.TestCase):
                         "0002_active_partition_memory",
                         "0003_memory_index_state",
                         "0004_skill_manifests",
+                        "0005_snapshot_patch_records",
+                        "0006_patch_artifacts",
                     ],
                 )
+                tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                self.assertIn("snapshot_records", tables)
+                self.assertIn("patch_artifacts", tables)
+                self.assertNotIn("file_snapshots", tables)
                 conn.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES ('9999_future', 'now')"
                 )

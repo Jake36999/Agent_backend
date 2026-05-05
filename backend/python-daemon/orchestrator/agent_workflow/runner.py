@@ -4,6 +4,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from orchestrator.active_partition.service import ActivePartitionService
+from orchestrator.candidate_analysis.manifest import load_manifest_candidates
+from orchestrator.candidate_analysis.service import CandidateAnalysisService
+from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
+from orchestrator.memory.service import MemoryService
+from orchestrator.memory.snapshots import SnapshotMemoryService
+
 from .bridge_client import TcpBridgeClient
 from .compaction import compact_tool_result
 from .policies import reasoning_policy
@@ -21,6 +28,11 @@ class WorkflowRunner:
         state_dir: Path | None = None,
         max_steps: int | None = None,
         max_tool_result_chars: int | None = None,
+        active_partition: ActivePartitionService | None = None,
+        memory_service: MemoryService | None = None,
+        snapshot_memory: SnapshotMemoryService | None = None,
+        conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
+        candidate_analysis: CandidateAnalysisService | None = None,
     ) -> None:
         self.lm_client = lm_client
         self.bridge_client = bridge_client
@@ -29,6 +41,11 @@ class WorkflowRunner:
         self.state_dir = Path(state_dir) if state_dir is not None else default_state_dir()
         self.max_steps = int(max_steps or 8)
         self.max_tool_result_chars = int(max_tool_result_chars or 2000)
+        self.active_partition = active_partition
+        self.memory_service = memory_service
+        self.snapshot_memory = snapshot_memory
+        self.conversation_summary_ingestor = conversation_summary_ingestor
+        self.candidate_analysis = candidate_analysis
 
     def run(
         self,
@@ -130,6 +147,7 @@ class WorkflowRunner:
             if todo["tool_name"] == "mcp_investigation_compile_handoff":
                 state.phase = "SYNTHESIZE"
                 state.final_summary = self._success_summary(state)
+                self._attach_round_one_artifacts(state, target_repo)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -137,6 +155,7 @@ class WorkflowRunner:
 
         state.phase = "SYNTHESIZE"
         state.final_summary = self._success_summary(state)
+        self._attach_round_one_artifacts(state, target_repo)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -221,6 +240,109 @@ class WorkflowRunner:
 
     def _success_summary(self, state: WorkflowState) -> str:
         return "Workflow complete. Generated session, manifest, validation, handoff, and archive artifacts."
+
+    def _attach_round_one_artifacts(self, state: WorkflowState, target_repo: str) -> None:
+        active = self.active_partition.get_active_partition() if self.active_partition is not None else None
+        if (
+            self.candidate_analysis is not None
+            and isinstance(state.selected_skill, dict)
+            and self._should_run_candidate_analysis(state.selected_skill)
+        ):
+            manifest_result = self._load_candidate_manifest(state, target_repo)
+            if not manifest_result["ok"]:
+                state.artifacts["candidate_analysis"] = {
+                    "ok": False,
+                    "status": "WARN",
+                    "summary": "Candidate analysis could not rank target repository files.",
+                    "ranked_candidates": [],
+                    "warnings": manifest_result["warnings"],
+                    "missing_context": [{"item": "manifest_csv", "reason": manifest_result["reason"]}],
+                    "ranking_policy_applied": self.candidate_analysis.ranking_policy,
+                    "next_action": "Provide a readable manifest_csv containing target_repo source files.",
+                }
+            else:
+                state.artifacts["candidate_analysis"] = self.candidate_analysis.analyze(
+                    {
+                        "objective": state.goal,
+                        "target_repo": target_repo,
+                        "logs": self._tool_result_context(state),
+                        "manifest_candidates": manifest_result["candidates"],
+                        "workspace_summary": "",
+                        "rag_context": "",
+                        "max_candidates": 10,
+                    }
+                )
+
+        if self.snapshot_memory is not None:
+            snapshot_result = self.snapshot_memory.record_workflow_snapshot(
+                workflow_result={
+                    "run_id": state.run_id,
+                    "summary": state.final_summary or self._success_summary(state),
+                    "artifacts": state.artifacts,
+                    "state_path": "",
+                },
+                active_partition=active,
+                selected_skill=state.selected_skill,
+            )
+            if snapshot_result.get("snapshot_id"):
+                state.artifacts["snapshot_id"] = snapshot_result["snapshot_id"]
+
+        if self.conversation_summary_ingestor is not None and self.memory_service is not None and active is not None:
+            source_artifacts = [
+                {"artifact": key, "path": value, "verified": True}
+                for key, value in state.artifacts.items()
+                if isinstance(key, str) and (key.endswith("_path") or key in {"final_markdown", "archive_yaml", "manifest_csv"})
+            ]
+            candidate = self.conversation_summary_ingestor.build_memory_candidate(
+                conversation_events=[
+                    {
+                        "type": "completed_artifact",
+                        "summary": state.final_summary or self._success_summary(state),
+                    }
+                ],
+                target_repo=target_repo,
+                project_id=active.active_project_id,
+                source_artifacts=source_artifacts,
+                write_intent="workflow snapshot summary",
+                selected_skill=state.selected_skill,
+            )
+            if candidate.get("write_allowed"):
+                memory_result = self.conversation_summary_ingestor.commit_if_allowed(
+                    candidate_result=candidate,
+                    memory_service=self.memory_service,
+                )
+                if memory_result.get("ok"):
+                    state.artifacts["summary_memory_result"] = {
+                        key: memory_result.get(key)
+                        for key in ("ok", "status", "memory_id", "index_status", "project_id", "project_scope_hash")
+                        if key in memory_result
+                    }
+
+    def _should_run_candidate_analysis(self, selected_skill: dict[str, Any]) -> bool:
+        return selected_skill.get("skill_id") == "candidate_analysis_v1" or "candidate_analysis" in set(selected_skill.get("capabilities") or [])
+
+    def _load_candidate_manifest(self, state: WorkflowState, target_repo: str) -> dict[str, Any]:
+        manifest_path = state.artifacts.get("manifest_csv")
+        if not isinstance(manifest_path, str) or not manifest_path.strip():
+            return {
+                "ok": False,
+                "reason": "manifest_csv artifact path missing",
+                "warnings": [{"artifact_key": "manifest_csv", "message": "manifest_csv artifact path missing"}],
+            }
+        result = load_manifest_candidates(manifest_path, target_repo)
+        if not result.ok:
+            return {
+                "ok": False,
+                "reason": result.error or (result.warnings[0]["message"] if result.warnings else "manifest_csv yielded no candidates"),
+                "warnings": result.warnings,
+            }
+        return {"ok": True, "candidates": result.candidates, "warnings": result.warnings}
+
+    def _tool_result_context(self, state: WorkflowState) -> str:
+        return "\n".join(str(item.get("summary") or "") for item in state.tool_results if isinstance(item, dict))
+
+    def _artifact_context(self, state: WorkflowState) -> str:
+        return "\n".join(f"{key},{value}" for key, value in state.artifacts.items() if isinstance(value, str))
 
     def _final_response(self, state: WorkflowState, state_path: Path, *, ok: bool, status: str) -> dict[str, Any]:
         artifacts = dict(state.artifacts)

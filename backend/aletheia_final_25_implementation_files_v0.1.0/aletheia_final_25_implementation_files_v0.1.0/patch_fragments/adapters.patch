@@ -1,0 +1,8 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/adapters.py
+@@
+ # No public MCP tool is added for individual skills in this bundle.
+ # If ToolAdapters exposes mcp_agent_workflow_run by delegating to agent_workflow.mcp_tool,
+ # no adapter changes are required beyond passing runtime services through the existing
+ # workflow helper. Keep skill/patch/snapshot services internal.
+*** End Patch

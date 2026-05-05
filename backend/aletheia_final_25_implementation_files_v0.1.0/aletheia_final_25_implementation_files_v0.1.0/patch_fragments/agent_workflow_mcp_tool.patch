@@ -1,0 +1,11 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/agent_workflow/mcp_tool.py
+@@
+-    return compact_response
++    # Preserve compact response shape. New expansion-layer services should add only
++    # small IDs/metadata to artifacts, never full report bodies or raw manifests.
++    for key in ("selected_skill", "candidate_analysis", "snapshot_id", "patch_id", "rollback_artifact"):
++        if key in workflow_result.get("artifacts", {}):
++            compact_response.setdefault("artifacts", {})[key] = workflow_result["artifacts"][key]
++    return compact_response
+*** End Patch

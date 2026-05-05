@@ -1,0 +1,18 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/config.py
+@@
+ class RuntimeConfig:
+@@
++    lmstudio_conversations_dir: Path | None = None
++    enable_lmstudio_watcher: bool = False
++    active_partition_settle_ms: int = 750
+@@
+-        return cls(
++        return cls(
+@@
++            lmstudio_conversations_dir=(Path(env["ALETHEIA_LMSTUDIO_CONVERSATIONS_DIR"]).expanduser().resolve()
++                if env.get("ALETHEIA_LMSTUDIO_CONVERSATIONS_DIR") else None),
++            enable_lmstudio_watcher=str(env.get("ALETHEIA_ENABLE_LMSTUDIO_WATCHER", "false")).lower() == "true",
++            active_partition_settle_ms=int(env.get("ALETHEIA_ACTIVE_PARTITION_SETTLE_MS", "750")),
+         )
+*** End Patch

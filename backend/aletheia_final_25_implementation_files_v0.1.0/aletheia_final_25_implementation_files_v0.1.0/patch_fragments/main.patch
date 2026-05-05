@@ -1,0 +1,21 @@
+*** Begin Patch
+*** Update File: backend/python-daemon/orchestrator/main.py
+@@
++import asyncio
+@@
+-    runtime = build_runtime(config)
++    runtime = build_runtime(config)
++    stop_event = asyncio.Event()
++    watcher_task = None
++    if getattr(runtime, "active_partition_watcher", None) is not None:
++        watcher_task = asyncio.create_task(runtime.active_partition_watcher.run_forever(stop_event))
+@@
+-    runtime.run()
++    try:
++        runtime.run()
++    finally:
++        stop_event.set()
++        if watcher_task is not None:
++            watcher_task.cancel()
++        runtime.close()
+*** End Patch

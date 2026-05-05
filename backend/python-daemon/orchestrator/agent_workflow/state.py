@@ -30,7 +30,7 @@ class WorkflowState:
     goal: str = ""
     phase: str = "PLAN"
     todos: list[dict[str, Any]] = field(default_factory=list)
-    artifacts: dict[str, str] = field(default_factory=dict)
+    artifacts: dict[str, Any] = field(default_factory=dict)
     tool_results: list[dict[str, Any]] = field(default_factory=list)
     reasoning_policy: dict[str, Any] = field(default_factory=dict)
     skill_registry_db_path: str = ""
