@@ -1,0 +1,30 @@
+{
+  "summary": "Search appears to return stale vectors after reindex.",
+  "feedback_loop": "Add or run an ingestion/search regression around edit -> ingest -> search.",
+  "reproduction_status": "unknown",
+  "minimized_case": "Single fixture file edited from phrase A to phrase B, then reindexed and searched for A/B.",
+  "ranked_hypotheses": [
+    {
+      "rank": 1,
+      "hypothesis": "stale Chroma vector records are not removed before upsert",
+      "evidence": "symptom mentions old content after reindex"
+    }
+  ],
+  "likely_candidates": [
+    {
+      "rank": 1,
+      "path": "orchestrator/ingest/service.py",
+      "reason": "likely owns reindex/delete lifecycle"
+    }
+  ],
+  "instrumentation_plan": [
+    {
+      "step": "Log chunk ids deleted and upserted during force_reindex"
+    }
+  ],
+  "regression_test_seam": "Ingestion service fixture test with changed file content.",
+  "tdd_handoff": {
+    "skill": "tdd_patch_plan_v1"
+  },
+  "next_action": "Create a RED test around stale search results after reindex."
+}

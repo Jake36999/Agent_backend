@@ -1,0 +1,188 @@
+{
+  "skill_id": "architecture_review_v1",
+  "version": "0.1.0",
+  "name": "Architecture review",
+  "description": "Review backend architecture for coupling, shallow modules, missing seams, poor testability, and boundary violations; produce refactor opportunities without generating code or diffs.",
+  "triggers": [
+    "architecture review",
+    "deep modules",
+    "shallow modules",
+    "coupling",
+    "missing boundary",
+    "testability",
+    "refactor architecture"
+  ],
+  "capabilities": [
+    "architecture_review",
+    "module_deepening",
+    "boundary_analysis",
+    "testability_review"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "objective": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "workspace_summary": {
+        "type": "string"
+      },
+      "domain_context": {
+        "type": "string"
+      },
+      "known_pain_points": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "objective",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "deepening_opportunities": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "shallow_modules": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "missing_boundaries": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "adapter_candidates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "deletion_test_results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "testability_friction": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "priority_findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "priority_findings",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "architecture_report",
+    "deepening_opportunity_list",
+    "refactor_candidates"
+  ],
+  "examples": [
+    {
+      "input": {
+        "objective": "Review skill registry architecture before implementation.",
+        "target_repo": "agent_backend",
+        "workspace_summary": "orchestrator has agent_workflow, approval, memory, active_partition packages"
+      },
+      "output": {
+        "summary": "Skill support should be isolated behind registry/importer/selector/executor seams.",
+        "deepening_opportunities": [
+          {
+            "module": "orchestrator/skills/registry.py",
+            "reason": "hide persistence/status rules behind a small API"
+          }
+        ],
+        "shallow_modules": [],
+        "missing_boundaries": [
+          {
+            "boundary": "skill selector vs executor",
+            "risk": "selection policy may become coupled to mutation logic"
+          }
+        ],
+        "adapter_candidates": [
+          {
+            "adapter": "SkillInstructionLoader",
+            "purpose": "lazy-load SKILL.md only after selection"
+          }
+        ],
+        "deletion_test_results": [
+          {
+            "candidate": "skills/executor.py",
+            "result": "complexity would leak into workflow runner if absent"
+          }
+        ],
+        "testability_friction": [
+          {
+            "issue": "approval gating must be injectable for unit tests"
+          }
+        ],
+        "priority_findings": [
+          {
+            "priority": "P0",
+            "finding": "split importer, selector, executor, and trust checker"
+          }
+        ],
+        "next_action": "Create phased refactor plan for skills package."
+      }
+    }
+  ]
+}

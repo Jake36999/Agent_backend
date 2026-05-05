@@ -1,0 +1,166 @@
+{
+  "skill_id": "patch_generate_v1",
+  "version": "0.1.0",
+  "name": "Patch generate",
+  "description": "Generate a unified diff from an approved objective and TDD/refactor plan without applying it, running tests, committing, pushing, or performing filesystem mutation.",
+  "triggers": [
+    "generate patch",
+    "unified diff",
+    "patch only",
+    "create diff",
+    "do not apply"
+  ],
+  "capabilities": [
+    "patch_generation",
+    "diff_only",
+    "audit_state",
+    "guardrail_checked"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "objective": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "tdd_plan": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "candidate_files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "guardrail_context": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "objective",
+      "target_repo",
+      "tdd_plan"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "unified_diff": {
+        "type": "string"
+      },
+      "affected_files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "test_commands": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "guardrail_checks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "audit_state": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "unified_diff",
+      "affected_files",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace",
+    "mcp_agent_workflow_run"
+  ],
+  "risk_tier": "T2",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "unified_diff",
+    "affected_files",
+    "test_commands",
+    "audit_record"
+  ],
+  "examples": [
+    {
+      "input": {
+        "objective": "Add strict manifest validation test.",
+        "target_repo": "agent_backend",
+        "tdd_plan": {
+          "red_steps": [
+            {
+              "step": "test invalid manifest quarantined"
+            }
+          ]
+        },
+        "candidate_files": [
+          {
+            "path": "orchestrator/skills/schema.py"
+          }
+        ]
+      },
+      "output": {
+        "summary": "Generated a diff proposal only.",
+        "unified_diff": "diff --git a/backend/python-daemon/orchestrator/skills/schema.py b/backend/python-daemon/orchestrator/skills/schema.py\n--- a/backend/python-daemon/orchestrator/skills/schema.py\n+++ b/backend/python-daemon/orchestrator/skills/schema.py\n@@ -0,0 +1,2 @@\n+class SkillManifestError(ValueError):\n+    pass\n",
+        "affected_files": [
+          "backend/python-daemon/orchestrator/skills/schema.py"
+        ],
+        "test_commands": [
+          "python -m unittest tests.test_skill_schema -v"
+        ],
+        "guardrail_checks": [
+          {
+            "rule": "diff_only",
+            "decision": "allow"
+          }
+        ],
+        "audit_state": {
+          "risk_tier": "T2",
+          "applied": false,
+          "requires_approval_for_apply": true
+        },
+        "next_action": "Present diff for approval before patch_apply_and_test_v1."
+      }
+    }
+  ]
+}

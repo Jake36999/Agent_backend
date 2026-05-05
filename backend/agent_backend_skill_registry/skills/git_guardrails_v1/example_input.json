@@ -1,0 +1,6 @@
+{
+  "proposed_action": "run command",
+  "target_repo": "agent_backend",
+  "command_text": "git reset --hard HEAD~1",
+  "context": "discard bad patch"
+}

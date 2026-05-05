@@ -1,0 +1,167 @@
+{
+  "skill_id": "refactor_plan_v1",
+  "version": "0.1.0",
+  "name": "Refactor plan",
+  "description": "Turn architecture review findings or a refactor objective into a phased backend-safe plan with tests, rollback notes, and approval points; no code or diff generation.",
+  "triggers": [
+    "refactor plan",
+    "phased refactor",
+    "architecture remediation",
+    "technical debt plan",
+    "rewrite plan"
+  ],
+  "capabilities": [
+    "refactor_planning",
+    "risk_planning",
+    "test_strategy",
+    "architecture_followup"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "objective": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "architecture_review": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "constraints": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "objective",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "refactor_objective": {
+        "type": "string"
+      },
+      "phases": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "risk_register": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "test_strategy": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "rollback_notes": {
+        "type": "string"
+      },
+      "approval_points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "phases",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "refactor_plan",
+    "risk_register",
+    "test_strategy"
+  ],
+  "examples": [
+    {
+      "input": {
+        "objective": "Plan skills package implementation.",
+        "target_repo": "agent_backend",
+        "architecture_review": {
+          "priority_findings": [
+            {
+              "finding": "split importer selector executor"
+            }
+          ]
+        }
+      },
+      "output": {
+        "summary": "Implement skills package behind narrow seams.",
+        "refactor_objective": "Add metadata-first skills without coupling to workflow runner internals.",
+        "phases": [
+          {
+            "phase": 1,
+            "name": "schema and validation",
+            "tests": [
+              "test_skill_schema"
+            ]
+          }
+        ],
+        "risk_register": [
+          {
+            "risk": "selector loads SKILL.md too early",
+            "mitigation": "test lazy loading"
+          }
+        ],
+        "test_strategy": [
+          {
+            "command": "python -m unittest discover -s tests -v",
+            "purpose": "default suite remains green"
+          }
+        ],
+        "rollback_notes": "Remove orchestrator/skills package and migration if validation fails before integration.",
+        "approval_points": [
+          {
+            "point": "before patch_apply_and_test implementation"
+          }
+        ],
+        "next_action": "Use patch_generate_v1 to create Phase 1 diff only."
+      }
+    }
+  ]
+}

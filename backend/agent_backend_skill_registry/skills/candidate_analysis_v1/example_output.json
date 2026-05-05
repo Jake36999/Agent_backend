@@ -1,0 +1,27 @@
+{
+  "summary": "The active partition package is the highest-probability area.",
+  "ranked_candidates": [
+    {
+      "rank": 1,
+      "path": "orchestrator/active_partition/service.py",
+      "confidence": 0.86,
+      "evidence": [
+        "package name match",
+        "tool behavior match"
+      ]
+    }
+  ],
+  "ranking_policy_applied": "score = direct_match + semantic_match + ownership + test_seam - blast_radius",
+  "evidence": [
+    {
+      "source": "logs",
+      "detail": "mcp_get_active_partition returns old project"
+    }
+  ],
+  "missing_context": [
+    {
+      "item": "current failing test output"
+    }
+  ],
+  "next_action": "Hand top candidates to bug_triage_v1 or tdd_patch_plan_v1."
+}

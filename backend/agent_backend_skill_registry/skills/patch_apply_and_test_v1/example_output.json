@@ -1,0 +1,23 @@
+{
+  "summary": "Approved diff applied and tests passed.",
+  "approved_diff_id": "diff-20260504-001",
+  "applied_files": [
+    "backend/python-daemon/orchestrator/skills/schema.py"
+  ],
+  "test_logs": [
+    {
+      "command": "python -m unittest tests.test_skill_schema -v",
+      "status": "passed",
+      "tail": "OK"
+    }
+  ],
+  "test_status": "passed",
+  "rollback_artifact": ".aletheia_state/rollback/diff-20260504-001.patch",
+  "audit_state": {
+    "risk_tier": "T3",
+    "approval_verified": true,
+    "committed": false,
+    "pushed": false
+  },
+  "next_action": "Report results; do not commit or push."
+}

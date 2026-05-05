@@ -128,6 +128,119 @@ CREATE INDEX IF NOT EXISTS idx_chunks_project_scope
 """
 
 
+QUEUE_MIGRATION_0002 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS memory_projects (
+  project_id TEXT NOT NULL,
+  project_scope_hash TEXT NOT NULL PRIMARY KEY,
+  source TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  lmstudio_folder_relpath TEXT,
+  allowed_roots_json TEXT NOT NULL DEFAULT '[]',
+  rag_enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_memory_projects_project_id
+  ON memory_projects(project_id);
+
+CREATE TABLE IF NOT EXISTS active_partitions (
+  client_id TEXT NOT NULL PRIMARY KEY,
+  active_project_id TEXT,
+  active_project_scope_hash TEXT,
+  active_conversation_id TEXT,
+  conversation_path TEXT,
+  confidence TEXT NOT NULL,
+  source_event TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_active_partitions_scope_hash
+  ON active_partitions(active_project_scope_hash);
+
+CREATE TABLE IF NOT EXISTS conversation_events (
+  event_id TEXT NOT NULL PRIMARY KEY,
+  project_scope_hash TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content_json TEXT NOT NULL,
+  token_count INTEGER NOT NULL DEFAULT 0,
+  timestamp TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_conversation_events_project_scope_hash
+  ON conversation_events(project_scope_hash);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_events_session_id
+  ON conversation_events(session_id);
+
+CREATE TABLE IF NOT EXISTS memory_records (
+  memory_id TEXT NOT NULL PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  project_scope_hash TEXT NOT NULL,
+  memory_type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  content TEXT NOT NULL,
+  content_sha1 TEXT NOT NULL,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  confidence_score REAL NOT NULL DEFAULT 1.0,
+  created_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_memory_records_project_scope_hash
+  ON memory_records(project_scope_hash);
+
+CREATE INDEX IF NOT EXISTS idx_memory_records_memory_type
+  ON memory_records(memory_type);
+
+CREATE INDEX IF NOT EXISTS idx_memory_records_project_scope_type
+  ON memory_records(project_scope_hash, memory_type);
+"""
+
+
+def _queue_migration_0003(conn: sqlite3.Connection) -> None:
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(memory_records)").fetchall()}
+    if "index_status" not in existing:
+        conn.execute("ALTER TABLE memory_records ADD COLUMN index_status TEXT NOT NULL DEFAULT 'pending'")
+    if "indexed_at" not in existing:
+        conn.execute("ALTER TABLE memory_records ADD COLUMN indexed_at TEXT")
+    if "index_error" not in existing:
+        conn.execute("ALTER TABLE memory_records ADD COLUMN index_error TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memory_records_index_status ON memory_records(index_status)"
+    )
+
+
+QUEUE_MIGRATION_0004 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS skill_manifests (
+  skill_id TEXT PRIMARY KEY,
+  version TEXT NOT NULL,
+  project_scope_hash TEXT,
+  manifest_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('verified', 'quarantined', 'disabled')),
+  source_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_skill_manifests_status
+ON skill_manifests(status);
+
+CREATE INDEX IF NOT EXISTS idx_skill_manifests_project_scope_hash
+ON skill_manifests(project_scope_hash);
+"""
+
+
 CONTROL_MIGRATION_0001 = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -170,7 +283,12 @@ CREATE TABLE IF NOT EXISTS dead_letters (
 """
 
 
-QUEUE_MIGRATIONS = (("0001_initial", QUEUE_MIGRATION_0001),)
+QUEUE_MIGRATIONS = (
+    ("0001_initial", QUEUE_MIGRATION_0001),
+    ("0002_active_partition_memory", QUEUE_MIGRATION_0002),
+    ("0003_memory_index_state", None),
+    ("0004_skill_manifests", QUEUE_MIGRATION_0004),  # noqa: F821
+)
 CONTROL_MIGRATIONS = (("0001_initial", CONTROL_MIGRATION_0001),)
 
 
@@ -200,7 +318,10 @@ def _apply_migrations(conn: sqlite3.Connection, migrations: tuple[tuple[str, str
     for version, script in migrations:
         if version in applied:
             continue
-        conn.executescript(script)
+        if version == "0003_memory_index_state":
+            _queue_migration_0003(conn)
+        else:
+            conn.executescript(script)
         conn.execute(
             "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (version, now),

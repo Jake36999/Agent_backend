@@ -1,0 +1,156 @@
+{
+  "skill_id": "conversation_summary_ingest_v1",
+  "version": "0.1.0",
+  "name": "Conversation summary ingest",
+  "description": "Distil verified conversation events into bounded project memory while rejecting guesses, volatile state, secrets, and unexecuted plans; writes only through approved memory tools.",
+  "triggers": [
+    "summarize conversation to memory",
+    "commit memory",
+    "project memory",
+    "conversation summary",
+    "ingest summary"
+  ],
+  "capabilities": [
+    "memory_ingest",
+    "bounded_summary",
+    "project_memory",
+    "verification_filter"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "conversation_events": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "project_id": {
+        "type": "string"
+      },
+      "source_artifacts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "write_intent": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "conversation_events",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "memory_candidate": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "verification_basis": {
+        "type": "string",
+        "enum": [
+          "tool_result",
+          "user_decision",
+          "approved_plan",
+          "completed_artifact",
+          "none"
+        ]
+      },
+      "memory_layer": {
+        "type": "string",
+        "enum": [
+          "project_summary",
+          "project_decision",
+          "project_sop",
+          "project_artifact",
+          "none"
+        ]
+      },
+      "volatile_fields_removed": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "write_allowed": {
+        "type": "boolean"
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "memory_candidate",
+      "write_allowed",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_commit_memory"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "bounded_summary",
+    "memory_record",
+    "source_event_ids"
+  ],
+  "examples": [
+    {
+      "input": {
+        "conversation_events": [
+          {
+            "type": "user_decision",
+            "content": "Use metadata-first skill manifests and lazy SKILL.md loading."
+          }
+        ],
+        "target_repo": "agent_backend",
+        "write_intent": "record architecture decision"
+      },
+      "output": {
+        "summary": "Record the accepted skill architecture decision.",
+        "memory_candidate": {
+          "category": "decision",
+          "content": "agent_backend skills use metadata-first skill.json manifests and lazy SKILL.md loading after selector choice."
+        },
+        "verification_basis": "user_decision",
+        "memory_layer": "project_decision",
+        "volatile_fields_removed": [],
+        "write_allowed": true,
+        "next_action": "Commit bounded decision memory through mcp_commit_memory."
+      }
+    }
+  ]
+}

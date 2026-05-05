@@ -12,6 +12,10 @@ class RuntimeConfig:
     project_id: str
     state_dir: Path
     allowed_roots: tuple[Path, ...]
+    lmstudio_conversations_dir: Path
+    enable_lmstudio_watcher: bool
+    active_partition_null_policy: str
+    active_partition_settle_ms: int
     chroma_path: Path
     lm_studio_base_url: str
     lm_studio_api_base_url: str
@@ -28,6 +32,7 @@ class RuntimeConfig:
     worker_id: str
     lease_seconds: int
     idle_sleep_seconds: float
+    skill_registry_root: Path | None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "RuntimeConfig":
@@ -37,6 +42,13 @@ class RuntimeConfig:
         state_dir = Path(env.get("ALETHEIA_STATE_DIR", project_root / ".aletheia_state")).resolve()
         allowed_roots_raw = env.get("ALETHEIA_ALLOWED_ROOTS", str(project_root))
         allowed_roots = tuple(Path(part).resolve() for part in allowed_roots_raw.split(";") if part.strip())
+        user_profile = Path(env.get("USERPROFILE", str(Path.home()))).expanduser()
+        lmstudio_conversations_dir = Path(
+            env.get("ALETHEIA_LMSTUDIO_CONVERSATIONS_DIR", str(user_profile / ".lmstudio" / "conversations"))
+        ).expanduser().resolve()
+        enable_lmstudio_watcher = env.get("ALETHEIA_ENABLE_LMSTUDIO_WATCHER", "false").lower() == "true"
+        active_partition_null_policy = env.get("ALETHEIA_ACTIVE_PARTITION_NULL_POLICY", "deny")
+        active_partition_settle_ms = int(env.get("ALETHEIA_ACTIVE_PARTITION_SETTLE_MS", "750"))
         enable_admin_bridge = env.get("ALETHEIA_ENABLE_ADMIN_BRIDGE", "false").lower() == "true"
         lm_studio_base_url = env.get("ALETHEIA_LM_STUDIO_BASE_URL", "http://localhost:1234/v1")
         lm_studio_api_base_url = env.get(
@@ -45,11 +57,25 @@ class RuntimeConfig:
         )
         lm_studio_api_token = env.get("ALETHEIA_LM_STUDIO_API_TOKEN")
         auto_load_embedding_model = env.get("ALETHEIA_AUTO_LOAD_EMBEDDING_MODEL", "true").lower() == "true"
+        
+        default_skill_registry_root = (Path(__file__).resolve().parents[2] / "agent_backend_skill_registry").resolve()
+        skill_registry_root_raw = env.get("ALETHEIA_SKILL_REGISTRY_ROOT")
+        if skill_registry_root_raw:
+            skill_registry_root = Path(skill_registry_root_raw).expanduser().resolve()
+        elif default_skill_registry_root.exists():
+            skill_registry_root = default_skill_registry_root
+        else:
+            skill_registry_root = None
+        
         return cls(
             project_root=project_root,
             project_id=project_id,
             state_dir=state_dir,
             allowed_roots=allowed_roots or (project_root,),
+            lmstudio_conversations_dir=lmstudio_conversations_dir,
+            enable_lmstudio_watcher=enable_lmstudio_watcher,
+            active_partition_null_policy=active_partition_null_policy,
+            active_partition_settle_ms=active_partition_settle_ms,
             chroma_path=Path(env.get("ALETHEIA_CHROMA_PATH", state_dir / "chroma")).resolve(),
             lm_studio_base_url=lm_studio_base_url,
             lm_studio_api_base_url=lm_studio_api_base_url,
@@ -66,4 +92,5 @@ class RuntimeConfig:
             worker_id=env.get("ALETHEIA_WORKER_ID", "aletheia-worker-1"),
             lease_seconds=int(env.get("ALETHEIA_LEASE_SECONDS", "60")),
             idle_sleep_seconds=float(env.get("ALETHEIA_IDLE_SLEEP_SECONDS", "0.25")),
+            skill_registry_root=skill_registry_root,
         )

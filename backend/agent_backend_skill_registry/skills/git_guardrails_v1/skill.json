@@ -1,0 +1,146 @@
+{
+  "skill_id": "git_guardrails_v1",
+  "version": "0.1.0",
+  "name": "Git guardrails",
+  "description": "Trust-check policy for blocking or escalating dangerous git, filesystem, secret, deployment, package, and broad shell operations before backend execution.",
+  "triggers": [
+    "git push",
+    "git reset",
+    "git clean",
+    "destructive command",
+    "secret exposure",
+    "broad filesystem operation",
+    "commit",
+    "deploy"
+  ],
+  "capabilities": [
+    "trust_check",
+    "git_guardrails",
+    "command_policy",
+    "risk_classification"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "proposed_action": {
+        "type": "string",
+        "description": "User or model proposed command/action to check."
+      },
+      "target_repo": {
+        "type": "string",
+        "description": "Repository or workspace identifier."
+      },
+      "command_text": {
+        "type": "string",
+        "description": "Exact command or operation text when available."
+      },
+      "context": {
+        "type": "string",
+        "description": "Optional reason/context for the action."
+      }
+    },
+    "required": [
+      "proposed_action",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "decision": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "require_approval",
+          "block"
+        ]
+      },
+      "matched_rules": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "risk_tier": {
+        "type": "string",
+        "enum": [
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5"
+        ]
+      },
+      "safe_alternative": {
+        "type": "string"
+      },
+      "violation_response": {
+        "type": "string"
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "decision",
+      "matched_rules",
+      "risk_tier",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [],
+  "risk_tier": "T4",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "blocked_command_patterns",
+    "requires_approval_patterns",
+    "safe_readonly_patterns",
+    "violation_response_template"
+  ],
+  "examples": [
+    {
+      "input": {
+        "proposed_action": "run command",
+        "target_repo": "agent_backend",
+        "command_text": "git reset --hard HEAD~1",
+        "context": "discard bad patch"
+      },
+      "output": {
+        "summary": "The command rewrites local state destructively.",
+        "decision": "block",
+        "matched_rules": [
+          {
+            "rule": "block_git_reset_hard",
+            "pattern": "git reset --hard"
+          }
+        ],
+        "risk_tier": "T4",
+        "safe_alternative": "Use git diff/status and produce a rollback plan without executing destructive commands.",
+        "violation_response": "Blocked: destructive git history/worktree mutation is not allowed.",
+        "next_action": "Ask for a non-destructive rollback artifact or explicit manual operator action."
+      }
+    }
+  ]
+}

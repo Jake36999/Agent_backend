@@ -1,0 +1,393 @@
+{
+  "version": "0.1.0",
+  "tools": [
+    {
+      "tool_id": "mcp_agent_workflow_run",
+      "display_name": "Agent workflow run",
+      "description": "Run the deterministic LM Studio-facing workflow controller.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "objective": { "type": "string", "minLength": 1 },
+          "target_repo": { "type": "string", "minLength": 1 },
+          "profile": { "type": "string", "enum": ["safe"], "default": "safe" },
+          "allow_ingest": { "type": "boolean", "default": false },
+          "include_report_preview": { "type": "boolean", "default": false },
+          "use_model_phases": { "type": "boolean", "default": false }
+        },
+        "required": ["objective", "target_repo"]
+      },
+      "output_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ok": { "type": "boolean" },
+          "status": { "type": "string" },
+          "run_id": { "type": "string" },
+          "summary": { "type": "string" },
+          "artifacts": { "type": "object" },
+          "state_path": { "type": "string" },
+          "error": { "type": ["object", "null"] }
+        },
+        "required": ["ok", "status", "summary", "artifacts"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": true,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_commit_memory",
+      "display_name": "Commit active memory",
+      "description": "Commit a bounded memory record to the active LM Studio partition.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["architecture", "decision", "summary", "bug_fix", "preference", "artifact"]
+          },
+          "content": { "type": "string", "minLength": 10, "maxLength": 8000 },
+          "confidence_score": { "type": "number", "minimum": 0.0, "maximum": 1.0, "default": 1.0 },
+          "metadata": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["category", "content"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "write_memory",
+      "requires_active_partition": true,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_extract_image",
+      "display_name": "Extract image text",
+      "description": "Run OCR fallback against non-selectable text content.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "absolute_path": { "type": "string", "minLength": 1 },
+          "page": { "type": "integer", "minimum": 1 },
+          "region": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "x": { "type": "integer", "minimum": 0 },
+              "y": { "type": "integer", "minimum": 0 },
+              "width": { "type": "integer", "minimum": 1 },
+              "height": { "type": "integer", "minimum": 1 }
+            },
+            "required": ["x", "y", "width", "height"]
+          }
+        },
+        "required": ["absolute_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_get_active_partition",
+      "display_name": "Get active partition",
+      "description": "Return the current active LM Studio partition from SQLite state.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_ingest_target",
+      "display_name": "Ingest target",
+      "description": "Route a local file to the ingestion pipeline by MIME type.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "absolute_path": { "type": "string", "minLength": 1 },
+          "mime_type": { "type": "string", "minLength": 1 },
+          "force_reindex": { "type": "boolean", "default": false }
+        },
+        "required": ["project_id", "absolute_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "write_files",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_investigation_compile_handoff",
+      "display_name": "Compile investigation handoff",
+      "description": "Compile investigation handoff metadata and artifact paths.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "session_path": { "type": "string", "minLength": 1 } },
+        "required": ["session_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_investigation_filemap",
+      "display_name": "Investigation file map",
+      "description": "Build constrained file map summaries for an investigation session.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_path": { "type": "string", "minLength": 1 },
+          "profile": { "type": "string", "enum": ["safe"], "default": "safe" }
+        },
+        "required": ["session_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_investigation_read_report",
+      "display_name": "Read investigation report",
+      "description": "Read bounded investigation report content from ToolSet artifacts.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "session_path": { "type": "string", "minLength": 1 },
+          "artifact_key": {
+            "type": "string",
+            "enum": ["manifest_csv", "manifest_health_json", "manifest_doctor_json", "manifest_doctor_md", "command_lint_json", "slicer_json", "slicer_md", "final_markdown", "final_python_bundle", "archive_yaml"]
+          },
+          "max_chars": { "type": "integer", "minimum": 1, "maximum": 12000 }
+        },
+        "required": ["session_path", "artifact_key"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_investigation_start",
+      "display_name": "Start investigation",
+      "description": "Start a safe external ToolSet investigation session.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "objective": { "type": "string", "minLength": 1 },
+          "target_repo": { "type": "string", "minLength": 1 },
+          "profile": { "type": "string", "enum": ["safe"], "default": "safe" }
+        },
+        "required": ["objective", "target_repo"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_investigation_validate_manifest",
+      "display_name": "Validate investigation manifest",
+      "description": "Validate a ToolSet investigation manifest.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "session_path": { "type": "string", "minLength": 1 } },
+        "required": ["session_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_list_memory_projects",
+      "display_name": "List memory projects",
+      "description": "List known LM Studio memory projects from SQLite state.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_scout_workspace",
+      "display_name": "Scout workspace",
+      "description": "Return a deterministic read-only workspace scout without indexing vectors.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "absolute_path": { "type": "string", "minLength": 1 },
+          "max_files": { "type": "integer", "minimum": 1, "maximum": 5000, "default": 500 },
+          "include_summaries": { "type": "boolean", "default": true }
+        },
+        "required": ["project_id", "absolute_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_semantic_search",
+      "display_name": "Semantic search",
+      "description": "Run cosine similarity search inside an isolated project namespace.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "query": { "type": "string", "minLength": 1 },
+          "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 8 }
+        },
+        "required": ["project_id", "query"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_semantic_search_active",
+      "display_name": "Active semantic search",
+      "description": "Search only the active LM Studio memory partition.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": { "type": "string", "minLength": 1 },
+          "k": { "type": "integer", "minimum": 1, "maximum": 50, "default": 8 }
+        },
+        "required": ["query"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": true,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_set_active_partition",
+      "display_name": "Set active partition",
+      "description": "Set the active LM Studio partition from a conversation path.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "conversation_path": { "type": "string", "minLength": 1 }
+        },
+        "required": ["conversation_path"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "write_memory",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_set_active_project_manual",
+      "display_name": "Manual active project override",
+      "description": "Manually override the active LM Studio project for admin/debug use.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "project_id": { "type": "string", "minLength": 1 },
+          "display_name": { "type": "string", "minLength": 1 }
+        },
+        "required": ["project_id"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["python-daemon", "internal"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "admin",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "internal_only": true,
+      "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_verify_integrity",
+      "display_name": "Verify integrity",
+      "description": "Verify a file against expected metadata and cryptographic hashes.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "absolute_path": { "type": "string", "minLength": 1 },
+          "expected_sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+          "expected_metadata_hash": { "type": "string", "minLength": 1 }
+        },
+        "required": ["absolute_path", "expected_sha256", "expected_metadata_hash"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.1.0"
+    }
+  ]
+}

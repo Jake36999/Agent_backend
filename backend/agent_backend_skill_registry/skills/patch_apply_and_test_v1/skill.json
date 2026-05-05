@@ -1,0 +1,164 @@
+{
+  "skill_id": "patch_apply_and_test_v1",
+  "version": "0.1.0",
+  "name": "Patch apply and test",
+  "description": "Apply an already approved unified diff and run declared tests through the backend approval gate; refuses unapproved natural-language mutation requests.",
+  "triggers": [
+    "apply approved patch",
+    "run declared tests",
+    "approved diff",
+    "patch apply",
+    "test approved patch"
+  ],
+  "capabilities": [
+    "approved_patch_application",
+    "test_execution",
+    "rollback_artifact",
+    "audit_state"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "approved_diff": {
+        "type": "string"
+      },
+      "approved_diff_id": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "test_commands": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "approval_record": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "required": [
+      "approved_diff",
+      "target_repo",
+      "approval_record"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "approved_diff_id": {
+        "type": "string"
+      },
+      "applied_files": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "test_logs": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "test_status": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "failed",
+          "not_run"
+        ]
+      },
+      "rollback_artifact": {
+        "type": "string"
+      },
+      "audit_state": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "applied_files",
+      "test_status",
+      "audit_state",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_agent_workflow_run"
+  ],
+  "risk_tier": "T3",
+  "approval_requirements": {
+    "requires_user_approval": true,
+    "requires_diff_approval": true
+  },
+  "test_commands": [],
+  "rollback_strategy": "restore rollback artifact produced before applying approved diff",
+  "artifacts_produced": [
+    "applied_files",
+    "test_logs",
+    "rollback_artifact",
+    "audit_record"
+  ],
+  "examples": [
+    {
+      "input": {
+        "approved_diff": "diff --git ...",
+        "approved_diff_id": "diff-20260504-001",
+        "target_repo": "agent_backend",
+        "test_commands": [
+          "python -m unittest tests.test_skill_schema -v"
+        ],
+        "approval_record": {
+          "user": "operator",
+          "approved": true
+        }
+      },
+      "output": {
+        "summary": "Approved diff applied and tests passed.",
+        "approved_diff_id": "diff-20260504-001",
+        "applied_files": [
+          "backend/python-daemon/orchestrator/skills/schema.py"
+        ],
+        "test_logs": [
+          {
+            "command": "python -m unittest tests.test_skill_schema -v",
+            "status": "passed",
+            "tail": "OK"
+          }
+        ],
+        "test_status": "passed",
+        "rollback_artifact": ".aletheia_state/rollback/diff-20260504-001.patch",
+        "audit_state": {
+          "risk_tier": "T3",
+          "approval_verified": true,
+          "committed": false,
+          "pushed": false
+        },
+        "next_action": "Report results; do not commit or push."
+      }
+    }
+  ]
+}

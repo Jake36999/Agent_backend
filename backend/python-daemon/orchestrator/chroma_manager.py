@@ -69,6 +69,19 @@ class ChromaManager:
             self._active_scope_hash = scope_hash
         return scope_hash
 
+    def _resolve_scope_hash(
+        self,
+        project_id: str,
+        project_params: dict[str, Any] | None = None,
+        project_scope_hash: str | None = None,
+    ) -> str:
+        if project_scope_hash:
+            if project_scope_hash != self._active_scope_hash:
+                self.embed_text.cache_clear()
+                self._active_scope_hash = project_scope_hash
+            return project_scope_hash
+        return self.switch_project(project_id, project_params)
+
     @lru_cache(maxsize=2048)
     def embed_text(self, text: str) -> list[float]:
         if not text or not text.strip():
@@ -112,8 +125,9 @@ class ChromaManager:
         project_id: str,
         chunks: list[dict[str, Any]],
         project_params: dict[str, Any] | None = None,
+        project_scope_hash: str | None = None,
     ) -> dict[str, Any]:
-        scope_hash = self.switch_project(project_id, project_params)
+        scope_hash = self._resolve_scope_hash(project_id, project_params, project_scope_hash)
         if not chunks:
             raise ChromaAdapterError("no chunks supplied")
 
@@ -146,10 +160,11 @@ class ChromaManager:
         query: str,
         k: int = 8,
         project_params: dict[str, Any] | None = None,
+        project_scope_hash: str | None = None,
     ) -> list[dict[str, Any]]:
         if k < 1 or k > 50:
             raise ChromaAdapterError("k must be between 1 and 50")
-        scope_hash = self.switch_project(project_id, project_params)
+        scope_hash = self._resolve_scope_hash(project_id, project_params, project_scope_hash)
         try:
             query_embedding = self.embed_text(query)
             results = self.collection.query(
@@ -162,8 +177,15 @@ class ChromaManager:
             raise ChromaAdapterError(f"ChromaDB query failed: {exc}") from exc
         return self._normalize_results(results)
 
-    def delete_chunks(self, *, project_id: str, absolute_path: str, project_params: dict[str, Any] | None = None) -> None:
-        scope_hash = self.switch_project(project_id, project_params)
+    def delete_chunks(
+        self,
+        *,
+        project_id: str,
+        absolute_path: str,
+        project_params: dict[str, Any] | None = None,
+        project_scope_hash: str | None = None,
+    ) -> None:
+        scope_hash = self._resolve_scope_hash(project_id, project_params, project_scope_hash)
         path = str(Path(absolute_path).resolve())
         try:
             self.collection.delete(
@@ -177,8 +199,14 @@ class ChromaManager:
         except Exception as exc:
             raise ChromaAdapterError(f"ChromaDB delete failed: {exc}") from exc
 
-    def rebuild_from_chunks(self, project_id: str, chunks: list[dict[str, Any]]) -> dict[str, Any]:
-        return self.upsert_chunks(project_id=project_id, chunks=chunks)
+    def rebuild_from_chunks(
+        self,
+        project_id: str,
+        chunks: list[dict[str, Any]],
+        *,
+        project_scope_hash: str | None = None,
+    ) -> dict[str, Any]:
+        return self.upsert_chunks(project_id=project_id, chunks=chunks, project_scope_hash=project_scope_hash)
 
     def _chunk_id(self, scope_hash: str, metadata: dict[str, Any], content: str) -> str:
         material = {

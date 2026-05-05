@@ -248,5 +248,46 @@ def mcp_investigation_compile_handoff(session_path: str) -> str:
     return as_pretty_json(result)
 
 
+@mcp.tool()
+def mcp_agent_workflow_run(
+    objective: str,
+    target_repo: str,
+    profile: str = "safe",
+    allow_ingest: bool = False,
+    include_report_preview: bool = False,
+    use_model_phases: bool = False,
+) -> str:
+    """
+    target_repo must be the exact absolute local path to investigate. Do not infer, abbreviate, or invent target_repo. Recommended LM Studio exposure is allowed_tools = ["mcp_agent_workflow_run"].
+    """
+    result = call_tool(
+        "mcp_agent_workflow_run",
+        {
+            "objective": objective,
+            "target_repo": target_repo,
+            "profile": profile,
+            "allow_ingest": allow_ingest,
+            "include_report_preview": include_report_preview,
+            "use_model_phases": use_model_phases,
+        },
+    )
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_set_active_partition(conversation_path: str) -> str:
+    result = call_tool("mcp_set_active_partition", {"conversation_path": conversation_path})
+    return as_pretty_json(result)
+
+
+@mcp.tool()
+def mcp_set_active_project_manual(project_id: str, display_name: str | None = None) -> str:
+    args: dict[str, Any] = {"project_id": project_id}
+    if display_name is not None:
+        args["display_name"] = display_name
+    result = call_tool("mcp_set_active_project_manual", args)
+    return as_pretty_json(result)
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

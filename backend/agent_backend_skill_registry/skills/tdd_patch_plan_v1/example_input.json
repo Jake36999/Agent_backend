@@ -1,0 +1,12 @@
+{
+  "objective": "Fix stale chunks after reindex.",
+  "target_repo": "agent_backend",
+  "candidate_files": [
+    {
+      "path": "orchestrator/ingest/service.py"
+    }
+  ],
+  "known_test_commands": [
+    "python -m unittest tests.test_chroma_and_ingest -v"
+  ]
+}

@@ -1,0 +1,191 @@
+{
+  "skill_id": "tdd_patch_plan_v1",
+  "version": "0.1.0",
+  "name": "TDD patch plan",
+  "description": "Convert bug triage, candidate files, and objectives into a vertical-slice RED/GREEN/REFACTOR plan using public behavior seams and declared tests only.",
+  "triggers": [
+    "tdd plan",
+    "red green refactor",
+    "test first",
+    "patch plan",
+    "failing test",
+    "vertical slice"
+  ],
+  "capabilities": [
+    "tdd_planning",
+    "test_strategy",
+    "patch_planning",
+    "vertical_slice"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "objective": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "triage_report": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "candidate_files": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "known_test_commands": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "objective",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "public_interface_under_test": {
+        "type": "string"
+      },
+      "behavior_slices": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "red_steps": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "green_steps": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "refactor_after_green": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "declared_test_commands": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "non_goals": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "red_steps",
+      "green_steps",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "tdd_plan",
+    "test_strategy",
+    "declared_test_commands"
+  ],
+  "examples": [
+    {
+      "input": {
+        "objective": "Fix stale chunks after reindex.",
+        "target_repo": "agent_backend",
+        "candidate_files": [
+          {
+            "path": "orchestrator/ingest/service.py"
+          }
+        ],
+        "known_test_commands": [
+          "python -m unittest tests.test_chroma_and_ingest -v"
+        ]
+      },
+      "output": {
+        "summary": "Plan one regression around edit -> reindex -> search.",
+        "public_interface_under_test": "mcp_ingest_target + mcp_semantic_search behavior",
+        "behavior_slices": [
+          {
+            "slice": "single changed fixture file no longer returns old phrase"
+          }
+        ],
+        "red_steps": [
+          {
+            "step": "Add failing unit/integration test asserting old phrase disappears after reindex"
+          }
+        ],
+        "green_steps": [
+          {
+            "step": "Remove stale chunk/vector records before inserting changed chunks"
+          }
+        ],
+        "refactor_after_green": [
+          {
+            "step": "Extract stale cleanup helper if deletion logic duplicates directory ingestion"
+          }
+        ],
+        "declared_test_commands": [
+          "python -m unittest tests.test_chroma_and_ingest -v"
+        ],
+        "non_goals": [
+          {
+            "item": "No broad Chroma rebuild feature in this patch"
+          }
+        ],
+        "next_action": "Pass plan to patch_generate_v1."
+      }
+    }
+  ]
+}

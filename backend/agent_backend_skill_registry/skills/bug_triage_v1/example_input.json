@@ -1,0 +1,6 @@
+{
+  "objective": "Investigate why semantic search returns stale chunks after a file edit.",
+  "target_repo": "agent_backend",
+  "logs": "search returns old content after reindex",
+  "failing_test_output": ""
+}

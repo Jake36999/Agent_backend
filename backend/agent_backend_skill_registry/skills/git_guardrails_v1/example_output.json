@@ -1,0 +1,14 @@
+{
+  "summary": "The command rewrites local state destructively.",
+  "decision": "block",
+  "matched_rules": [
+    {
+      "rule": "block_git_reset_hard",
+      "pattern": "git reset --hard"
+    }
+  ],
+  "risk_tier": "T4",
+  "safe_alternative": "Use git diff/status and produce a rollback plan without executing destructive commands.",
+  "violation_response": "Blocked: destructive git history/worktree mutation is not allowed.",
+  "next_action": "Ask for a non-destructive rollback artifact or explicit manual operator action."
+}

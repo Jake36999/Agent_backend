@@ -1,0 +1,6 @@
+{
+  "objective": "Find likely files for active partition selection bug.",
+  "target_repo": "agent_backend",
+  "logs": "mcp_get_active_partition returns old project",
+  "workspace_summary": "active_partition package exists"
+}

@@ -1,0 +1,11 @@
+{
+  "objective": "Plan skills package implementation.",
+  "target_repo": "agent_backend",
+  "architecture_review": {
+    "priority_findings": [
+      {
+        "finding": "split importer selector executor"
+      }
+    ]
+  }
+}

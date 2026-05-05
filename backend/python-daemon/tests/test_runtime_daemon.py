@@ -5,11 +5,14 @@ import unittest
 from collections import deque
 from contextlib import closing
 from pathlib import Path
+import threading
+import time
 
 from orchestrator.adapters import ToolAdapters
 from orchestrator.bridge_server import BridgeSecurity, build_auth_envelope, handle_json_rpc, line_too_large
 from orchestrator.config import RuntimeConfig
 from orchestrator.db_bootstrap import bootstrap_databases
+from orchestrator.main import maybe_import_skills
 from orchestrator.queue_repo import QueueRepository
 from orchestrator.runtime import build_runtime
 from orchestrator.worker import DaemonWorker
@@ -84,6 +87,27 @@ class RuntimeDaemonTests(unittest.TestCase):
             finally:
                 runtime.close()
 
+    def test_runtime_wires_ocr_provider_into_pdf_ingest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = RuntimeConfig.from_env(
+                {
+                    "ALETHEIA_PROJECT_ROOT": str(root),
+                    "ALETHEIA_STATE_DIR": str(root / "state"),
+                    "ALETHEIA_ALLOWED_ROOTS": str(root),
+                    "ALETHEIA_CHROMA_PATH": str(root / "chroma"),
+                    "ALETHEIA_OCR_COMMAND": "ocr-binary",
+                }
+            )
+
+            runtime = build_runtime(config)
+
+            try:
+                self.assertIsNotNone(runtime.ingest.pdf_processor.ocr_provider)
+                self.assertIs(runtime.ingest.pdf_processor.ocr_provider, runtime.tool_adapters.ocr_provider)
+            finally:
+                runtime.close()
+
     def test_worker_executes_payload_tool_and_completes_task(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -147,7 +171,15 @@ class RuntimeDaemonTests(unittest.TestCase):
             bootstrap_databases(root)
             with closing(sqlite3.connect(root / "queue.db")) as conn:
                 rows = conn.execute("SELECT version FROM schema_migrations").fetchall()
-                self.assertEqual([row[0] for row in rows], ["0001_initial"])
+                self.assertEqual(
+                    [row[0] for row in rows],
+                    [
+                        "0001_initial",
+                        "0002_active_partition_memory",
+                        "0003_memory_index_state",
+                        "0004_skill_manifests",
+                    ],
+                )
                 conn.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES ('9999_future', 'now')"
                 )
@@ -280,6 +312,28 @@ class RuntimeDaemonTests(unittest.TestCase):
         config = RuntimeConfig.from_env({})
         self.assertEqual(config.embedding_model, "text-embedding-nomic-embed-text-v1.5")
 
+    def test_daemon_startup_imports_verified_skills_into_queue_db(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state_dir = root / "state"
+            bootstrap_databases(state_dir)
+            config = RuntimeConfig.from_env(
+                {
+                    "ALETHEIA_PROJECT_ROOT": str(root),
+                    "ALETHEIA_STATE_DIR": str(state_dir),
+                    "ALETHEIA_ALLOWED_ROOTS": str(root),
+                }
+            )
+            report = maybe_import_skills(config, state_dir / "queue.db")
+
+            with closing(sqlite3.connect(state_dir / "queue.db")) as conn:
+                verified_count = conn.execute(
+                    "SELECT COUNT(*) FROM skill_manifests WHERE status = 'verified'"
+                ).fetchone()[0]
+
+            self.assertIsNotNone(report)
+            self.assertGreaterEqual(int(verified_count), 1)
+
 
 class FakeResponseForLMStudio:
     def __init__(self, payload):
@@ -294,11 +348,21 @@ class FakeResponseForLMStudio:
 
 
 class LMStudioManagerTests(unittest.TestCase):
+    def test_connection_summary_reports_token_presence_without_leaking_token(self):
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+
+        with_token = LMStudioManager(LMStudioManagerConfig(api_token="super-secret"))
+        without_token = LMStudioManager(LMStudioManagerConfig())
+
+        self.assertTrue(with_token.connection_summary()["token_present"])
+        self.assertFalse(without_token.connection_summary()["token_present"])
+        self.assertNotIn("super-secret", json.dumps(with_token.connection_summary()))
+
     def test_list_models_accepts_models_and_data_keys(self):
         calls = []
         def get(url, headers=None, timeout=None):
             calls.append((url, headers))
-            return FakeResponseForLMStudio({"models": [{"key": "model1", "type": "embedding", "state": "loaded"}]})
+            return FakeResponseForLMStudio({"models": [{"key": "model1", "type": "embedding", "state": "loaded", "loaded_instances": [{"id": "model1"}]}]})
 
         from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
         manager = LMStudioManager(LMStudioManagerConfig(), http_get=get)
@@ -326,7 +390,7 @@ class LMStudioManagerTests(unittest.TestCase):
         post_calls = []
         def get(url, **kwargs):
             get_calls.append(url)
-            return FakeResponseForLMStudio({"models": [{"key": "embed-model", "type": "embedding", "state": "unloaded"}]})
+            return FakeResponseForLMStudio({"models": [{"key": "embed-model", "type": "embedding", "state": "unloaded", "loaded_instances": []}]})
 
         def post(url, json=None, **kwargs):
             post_calls.append((url, json))
@@ -340,6 +404,117 @@ class LMStudioManagerTests(unittest.TestCase):
         self.assertEqual(len(post_calls), 1)
         self.assertEqual(post_calls[0][0], "http://127.0.0.1:1234/api/v1/models/load")
         self.assertEqual(post_calls[0][1], {"model": "embed-model"})
+
+    def test_ensure_embedding_model_loaded_skips_when_exact_loaded_instance_present(self):
+        post_calls = []
+
+        def get(url, **kwargs):
+            return FakeResponseForLMStudio({"models": [{"key": "embed-model", "type": "embedding", "loaded_instances": [{"id": "embed-model"}], "state": "loaded"}]})
+
+        def post(url, **kwargs):
+            post_calls.append(url)
+            return FakeResponseForLMStudio({})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get, http_post=post)
+
+        manager.ensure_embedding_model_loaded("embed-model")
+
+        self.assertEqual(post_calls, [])
+
+    def test_ensure_embedding_model_loaded_skips_when_suffixed_loaded_instance_present(self):
+        post_calls = []
+
+        def get(url, **kwargs):
+            return FakeResponseForLMStudio({"models": [{"key": "embed-model", "type": "embedding", "loaded_instances": [{"id": "embed-model:4"}], "state": "loaded"}]})
+
+        def post(url, **kwargs):
+            post_calls.append(url)
+            return FakeResponseForLMStudio({})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get, http_post=post)
+
+        manager.ensure_embedding_model_loaded("embed-model")
+
+        self.assertEqual(post_calls, [])
+
+    def test_ensure_embedding_model_loaded_warns_on_multiple_loaded_instances(self):
+        post_calls = []
+
+        def get(url, **kwargs):
+            return FakeResponseForLMStudio({
+                "models": [
+                    {
+                        "key": "embed-model",
+                        "type": "embedding",
+                        "loaded_instances": [{"id": "embed-model"}, {"id": "embed-model:2"}],
+                        "state": "loaded",
+                    }
+                ]
+            })
+
+        def post(url, **kwargs):
+            post_calls.append(url)
+            return FakeResponseForLMStudio({})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get, http_post=post)
+
+        with self.assertLogs("orchestrator.lm_studio_manager", level="WARNING") as logs:
+            manager.ensure_embedding_model_loaded("embed-model")
+
+        self.assertEqual(post_calls, [])
+        self.assertTrue(any("multiple loaded instances" in line for line in logs.output))
+
+    def test_concurrent_ensure_embedding_model_loaded_calls_only_load_once(self):
+        state = {"loaded": False, "get_calls": 0, "post_calls": 0}
+        state_lock = threading.Lock()
+
+        def get(url, **kwargs):
+            with state_lock:
+                state["get_calls"] += 1
+                call_number = state["get_calls"]
+                loaded = state["loaded"]
+            if call_number == 1:
+                time.sleep(0.05)
+            payload = {
+                "models": [
+                    {
+                        "key": "embed-model",
+                        "type": "embedding",
+                        "state": "loaded" if loaded else "unloaded",
+                        "loaded_instances": [{"id": "embed-model"}] if loaded else [],
+                    }
+                ]
+            }
+            return FakeResponseForLMStudio(payload)
+
+        def post(url, json=None, **kwargs):
+            with state_lock:
+                state["post_calls"] += 1
+                state["loaded"] = True
+            return FakeResponseForLMStudio({})
+
+        from orchestrator.lm_studio_manager import LMStudioManager, LMStudioManagerConfig
+        manager = LMStudioManager(LMStudioManagerConfig(), http_get=get, http_post=post)
+
+        errors: list[BaseException] = []
+
+        def worker():
+            try:
+                manager.ensure_embedding_model_loaded("embed-model")
+            except BaseException as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        self.assertEqual(state["post_calls"], 1)
+        self.assertEqual(errors, [])
 
     def test_401_from_list_models_gives_clear_token_error(self):
         import requests

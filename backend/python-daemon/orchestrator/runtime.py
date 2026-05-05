@@ -3,13 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .adapters import FileToolAdapter, ReadOnlySqliteAdapter, ToolAdapters
+from .active_partition.repo import ActivePartitionRepository
+from .active_partition.service import ActivePartitionService
 from .bridge_server import BridgeSecurity
 from .chroma_manager import ChromaConfig, ChromaManager
 from .config import RuntimeConfig
+from .memory.repo import MemoryRepository
+from .memory.service import MemoryService
 from .tool_assist_adapter import ToolAssistAdapter
 from .db_bootstrap import bootstrap_databases
 from .execution_loop import ExecutionLoop
 from .ingest.processors import WorkspaceScout
+from .ingest.processors import PdfProcessorAdapter
 from .ingest.service import IngestTargetService
 from .ocr import CommandOCRProvider
 from .queue_repo import QueueRepository
@@ -67,12 +72,21 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
             auto_load_embedding_model=config.auto_load_embedding_model,
         )
     )
-    ingest = IngestTargetService(repo, chroma, allowed_roots=config.allowed_roots)
+    active_partition_repo = ActivePartitionRepository(repo.queue_db)
+    memory_repo = MemoryRepository(repo.queue_db)
+    active_partition = ActivePartitionService(
+        active_partition_repo,
+        conversations_root=config.lmstudio_conversations_dir,
+        allowed_roots=config.allowed_roots,
+    )
+    memory_service = MemoryService(memory_repo, active_partition_repo, chroma)
     file_tools = FileToolAdapter(config.allowed_roots)
     sqlite_tools = ReadOnlySqliteAdapter(config.allowed_roots)
     scout = WorkspaceScout(config.allowed_roots)
     shell_adapter = ShellAdapter(config.allowed_roots)
     ocr_provider = CommandOCRProvider(shell_adapter=shell_adapter, command=config.ocr_command) if config.ocr_command else None
+    pdf_processor = PdfProcessorAdapter(ocr_provider=ocr_provider)
+    ingest = IngestTargetService(repo, chroma, allowed_roots=config.allowed_roots, pdf_processor=pdf_processor)
     tool_adapters = ToolAdapters(
         semantic_memory=ingest,
         file_tools=file_tools,
@@ -80,6 +94,11 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         workspace_scout=scout,
         ocr_provider=ocr_provider,
         tool_assist=ToolAssistAdapter(),
+        active_partition=active_partition,
+        memory_service=memory_service,
+        allowed_roots=config.allowed_roots,
+        skill_registry_root=config.skill_registry_root,
+        queue_db_path=repo.queue_db,
     )
     return RuntimeComponents(
         config=config,

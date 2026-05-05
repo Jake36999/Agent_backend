@@ -1,0 +1,5 @@
+{
+  "objective": "Review skill registry architecture before implementation.",
+  "target_repo": "agent_backend",
+  "workspace_summary": "orchestrator has agent_workflow, approval, memory, active_partition packages"
+}

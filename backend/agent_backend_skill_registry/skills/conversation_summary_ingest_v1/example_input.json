@@ -1,0 +1,10 @@
+{
+  "conversation_events": [
+    {
+      "type": "user_decision",
+      "content": "Use metadata-first skill manifests and lazy SKILL.md loading."
+    }
+  ],
+  "target_repo": "agent_backend",
+  "write_intent": "record architecture decision"
+}

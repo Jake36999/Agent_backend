@@ -1,0 +1,12 @@
+{
+  "summary": "Record the accepted skill architecture decision.",
+  "memory_candidate": {
+    "category": "decision",
+    "content": "agent_backend skills use metadata-first skill.json manifests and lazy SKILL.md loading after selector choice."
+  },
+  "verification_basis": "user_decision",
+  "memory_layer": "project_decision",
+  "volatile_fields_removed": [],
+  "write_allowed": true,
+  "next_action": "Commit bounded decision memory through mcp_commit_memory."
+}

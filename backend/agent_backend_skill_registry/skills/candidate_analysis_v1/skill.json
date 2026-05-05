@@ -1,0 +1,153 @@
+{
+  "skill_id": "candidate_analysis_v1",
+  "version": "0.1.0",
+  "name": "Candidate analysis",
+  "description": "Rank likely files, functions, modules, and tests from an objective, logs, workspace scout output, manifests, and project memory while keeping the ranking deterministic and evidence-backed.",
+  "triggers": [
+    "candidate analysis",
+    "rank files",
+    "likely files",
+    "where to change",
+    "file candidates",
+    "function candidates"
+  ],
+  "capabilities": [
+    "candidate_analysis",
+    "workspace_ranking",
+    "semantic_search",
+    "deterministic_scoring"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "objective": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "logs": {
+        "type": "string"
+      },
+      "manifest_summary": {
+        "type": "string"
+      },
+      "workspace_summary": {
+        "type": "string"
+      },
+      "rag_context": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "objective",
+      "target_repo"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "ranked_candidates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "ranking_policy_applied": {
+        "type": "string"
+      },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "missing_context": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "ranked_candidates",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "candidate_ranking",
+    "evidence_table",
+    "missing_context_list"
+  ],
+  "examples": [
+    {
+      "input": {
+        "objective": "Find likely files for active partition selection bug.",
+        "target_repo": "agent_backend",
+        "logs": "mcp_get_active_partition returns old project",
+        "workspace_summary": "active_partition package exists"
+      },
+      "output": {
+        "summary": "The active partition package is the highest-probability area.",
+        "ranked_candidates": [
+          {
+            "rank": 1,
+            "path": "orchestrator/active_partition/service.py",
+            "confidence": 0.86,
+            "evidence": [
+              "package name match",
+              "tool behavior match"
+            ]
+          }
+        ],
+        "ranking_policy_applied": "score = direct_match + semantic_match + ownership + test_seam - blast_radius",
+        "evidence": [
+          {
+            "source": "logs",
+            "detail": "mcp_get_active_partition returns old project"
+          }
+        ],
+        "missing_context": [
+          {
+            "item": "current failing test output"
+          }
+        ],
+        "next_action": "Hand top candidates to bug_triage_v1 or tdd_patch_plan_v1."
+      }
+    }
+  ]
+}

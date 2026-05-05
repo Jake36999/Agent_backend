@@ -1,0 +1,12 @@
+{
+  "approved_diff": "diff --git ...",
+  "approved_diff_id": "diff-20260504-001",
+  "target_repo": "agent_backend",
+  "test_commands": [
+    "python -m unittest tests.test_skill_schema -v"
+  ],
+  "approval_record": {
+    "user": "operator",
+    "approved": true
+  }
+}

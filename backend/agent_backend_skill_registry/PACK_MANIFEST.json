@@ -1,0 +1,85 @@
+{
+  "pack_id": "agent_backend_core_skills_v1",
+  "version": "0.1.0",
+  "target_runtime": "agent_backend",
+  "generated_at": "2026-05-04",
+  "source_inspiration": [
+    {
+      "name": "mattpocock/skills",
+      "use": "composable engineering workflows, diagnose/TDD/architecture/guardrails patterns"
+    },
+    {
+      "name": "lsdefine/GenericAgent",
+      "use": "layered memory, skill crystallisation, bounded recall inspiration with restricted permissions"
+    }
+  ],
+  "compatibility": {
+    "requires_metadata_first_importer": true,
+    "requires_lazy_skill_md_loading": true,
+    "requires_trust_tier_enforcement": true,
+    "requires_approval_gate_for_t3": true,
+    "requires_quarantine_for_invalid_manifests": true
+  },
+  "skills": [
+    {
+      "skill_id": "git_guardrails_v1",
+      "version": "0.1.0",
+      "risk_tier": "T4",
+      "path": "skills/git_guardrails_v1"
+    },
+    {
+      "skill_id": "bug_triage_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/bug_triage_v1"
+    },
+    {
+      "skill_id": "candidate_analysis_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/candidate_analysis_v1"
+    },
+    {
+      "skill_id": "architecture_review_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/architecture_review_v1"
+    },
+    {
+      "skill_id": "tdd_patch_plan_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/tdd_patch_plan_v1"
+    },
+    {
+      "skill_id": "refactor_plan_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/refactor_plan_v1"
+    },
+    {
+      "skill_id": "patch_generate_v1",
+      "version": "0.1.0",
+      "risk_tier": "T2",
+      "path": "skills/patch_generate_v1"
+    },
+    {
+      "skill_id": "patch_apply_and_test_v1",
+      "version": "0.1.0",
+      "risk_tier": "T3",
+      "path": "skills/patch_apply_and_test_v1"
+    },
+    {
+      "skill_id": "conversation_summary_ingest_v1",
+      "version": "0.1.0",
+      "risk_tier": "T1",
+      "path": "skills/conversation_summary_ingest_v1"
+    },
+    {
+      "skill_id": "skill_crystallize_v1",
+      "version": "0.1.0",
+      "risk_tier": "T2",
+      "path": "skills/skill_crystallize_v1"
+    }
+  ]
+}

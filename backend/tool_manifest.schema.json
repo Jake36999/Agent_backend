@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "tools"],
+  "properties": {
+    "version": { "type": "string", "minLength": 1 },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tool_id",
+          "display_name",
+          "description",
+          "input_schema",
+          "dispatcher",
+          "surfaces",
+          "default_exposed_to_lmstudio",
+          "risk_level",
+          "requires_active_partition",
+          "requires_allowed_root",
+          "version"
+        ],
+        "properties": {
+          "tool_id": { "type": "string", "minLength": 1 },
+          "display_name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "input_schema": { "type": "object" },
+          "output_schema": { "type": "object" },
+          "dispatcher": { "type": "string", "minLength": 1 },
+          "surfaces": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["node-mcp", "fastmcp", "python-daemon", "internal"] },
+            "minItems": 1
+          },
+          "default_exposed_to_lmstudio": { "type": "boolean" },
+          "risk_level": { "type": "string", "enum": ["read_only", "write_memory", "write_files", "admin"] },
+          "requires_active_partition": { "type": "boolean" },
+          "requires_allowed_root": { "type": "boolean" },
+          "version": { "type": "string", "minLength": 1 },
+          "notes": { "type": "string" },
+          "internal_only": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}

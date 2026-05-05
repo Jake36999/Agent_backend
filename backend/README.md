@@ -29,6 +29,7 @@ python -m orchestrator.main
 ```
 
 The installed script entrypoint is also available as `aletheia-daemon`.
+Set the environment variables before starting the Python daemon. If you change PowerShell env vars after the daemon is already running, that existing process will keep using the values it started with.
 
 ## Node MCP Gateway
 
@@ -46,6 +47,17 @@ LM Studio -> backend/lmstudio_fastmcp_shim.py -> Python daemon TCP bridge -> Too
 
 The Node MCP gateway remains the generic strict stdio gateway, while the FastMCP shim is the currently verified LM Studio adapter.
 The investigation tools (`mcp_investigation_*`) are also exposed through `backend/lmstudio_fastmcp_shim.py` for this LM Studio topology.
+For normal LM Studio usage, prefer exposing only `mcp_agent_workflow_run` via `allowed_tools` so the model sees a smaller tool surface:
+
+```json
+{
+  "type": "plugin",
+  "id": "mcp/aletheia-fastmcp-shim",
+  "allowed_tools": ["mcp_agent_workflow_run"]
+}
+```
+
+The lower-level `mcp_investigation_*`, active partition, and memory tools still exist for manual or debug use, but they are intentionally not the default LM Studio surface.
 
 The Node process validates public tool schemas and forwards tool calls with a per-request HMAC auth envelope.
 
@@ -69,6 +81,16 @@ $env:ALETHEIA_AUTO_LOAD_EMBEDDING_MODEL="true"
 ```
 
 The daemon will attempt to load the embedding model if not already loaded, providing clear errors for auth/model issues.
+The readiness check reads `ALETHEIA_LM_STUDIO_API_TOKEN` and the embedding model settings at daemon startup time, so update the environment before launching the daemon if those values change.
+
+## Tool Manifest Scaffold
+
+The repo includes a minimal, auditable tool manifest scaffold in:
+
+- `backend/tool_manifest.json`
+- `backend/tool_manifest.schema.json`
+
+This manifest describes existing tool surfaces, dispatch routing, risk level, and LM Studio exposure policy. It is validation and documentation scaffolding only. It does not replace the Node contracts, FastMCP shim, or Python daemon adapters.
 
 ## Admin CLI
 

@@ -1,0 +1,19 @@
+{
+  "summary": "Drafted a candidate skill from a verified repeated workflow.",
+  "candidate_skill_id": "stale_vector_triage_v1",
+  "source_run_artifacts": [
+    {
+      "artifact": "triage_report",
+      "verified": true
+    }
+  ],
+  "reusable_pattern": "Use edit -> reindex -> search loop to diagnose stale vector bugs.",
+  "activation_risk_tier": "T1",
+  "requires_human_activation": true,
+  "proposed_skill_json": {
+    "skill_id": "stale_vector_triage_v1",
+    "version": "0.1.0"
+  },
+  "proposed_skill_md": "# Stale vector triage v1\n\nDraft instructions...",
+  "next_action": "Submit candidate for human review and backend validation."
+}

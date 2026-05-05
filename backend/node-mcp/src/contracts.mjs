@@ -28,6 +28,56 @@ export const CONTRACTS = [
     },
   },
   {
+    name: "mcp_commit_memory",
+    description: "Commit a bounded memory record to the active LM Studio partition.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        category: {
+          type: "string",
+          enum: ["architecture", "decision", "summary", "bug_fix", "preference", "artifact"],
+        },
+        content: { type: "string", minLength: 10, maxLength: 8000 },
+        confidence_score: { type: "number", minimum: 0.0, maximum: 1.0, default: 1.0 },
+        metadata: { type: "object", additionalProperties: true },
+      },
+      required: ["category", "content"],
+    },
+  },
+  {
+    name: "mcp_agent_workflow_run",
+    description: "Run the deterministic LM Studio-facing workflow controller.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        objective: { type: "string", minLength: 1 },
+        target_repo: { type: "string", minLength: 1 },
+        profile: { type: "string", enum: ["safe"], default: "safe" },
+        allow_ingest: { type: "boolean", default: false },
+        include_report_preview: { type: "boolean", default: false },
+        use_model_phases: { type: "boolean", default: false },
+      },
+      required: ["objective", "target_repo"],
+    },
+  },
+  {
+    name: "mcp_get_active_partition",
+    description: "Return the current active LM Studio partition from SQLite state.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  },
+  {
     name: "mcp_investigation_start",
     description: "Start a safe external ToolSet investigation session.",
     strict: true,
@@ -103,6 +153,17 @@ export const CONTRACTS = [
     },
   },
   {
+    name: "mcp_list_memory_projects",
+    description: "List known LM Studio memory projects from SQLite state.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {},
+    },
+  },
+  {
     name: "mcp_ingest_target",
     description: "Route a local file to PDFProcessor or CodebaseProcessor by MIME type.",
     strict: true,
@@ -136,6 +197,21 @@ export const CONTRACTS = [
     },
   },
   {
+    name: "mcp_semantic_search_active",
+    description: "Run semantic search within the active LM Studio partition only.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        query: { type: "string", minLength: 1 },
+        k: { type: "integer", minimum: 1, maximum: 50, default: 8 },
+      },
+      required: ["query"],
+    },
+  },
+  {
     name: "mcp_scout_workspace",
     description: "Return a deterministic read-only workspace scout without indexing vectors.",
     strict: true,
@@ -150,6 +226,35 @@ export const CONTRACTS = [
         include_summaries: { type: "boolean", default: true },
       },
       required: ["project_id", "absolute_path"],
+    },
+  },
+  {
+    name: "mcp_set_active_partition",
+    description: "Set the active LM Studio partition from a conversation path.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        conversation_path: { type: "string", minLength: 1 },
+      },
+      required: ["conversation_path"],
+    },
+  },
+  {
+    name: "mcp_set_active_project_manual",
+    description: "Manually override the active LM Studio project for admin/debug use.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        project_id: { type: "string", minLength: 1 },
+        display_name: { type: "string", minLength: 1 },
+      },
+      required: ["project_id"],
     },
   },
   {
@@ -179,7 +284,21 @@ export function validateToolInput(name, args) {
   if (!contract) {
     return { ok: false, error: "unknown_tool", details: [{ message: `Unknown tool: ${name}` }] };
   }
-  return validateObject(contract.inputSchema, args ?? {}, "");
+  const result = validateObject(contract.inputSchema, args ?? {}, "");
+  if (!result.ok) {
+    return result;
+  }
+  if (name === "mcp_set_active_partition") {
+    const hasConversation = typeof args?.conversation_path === "string" && args.conversation_path.length > 0;
+    if (!hasConversation) {
+      return {
+        ok: false,
+        error: "schema_validation_failed",
+        details: [{ path: "", keyword: "required", message: "conversation_path is required" }],
+      };
+    }
+  }
+  return result;
 }
 
 function validateObject(schema, value, path) {
@@ -224,6 +343,9 @@ function validateValue(schema, value, path) {
       if (schema.minLength && value.length < schema.minLength) {
         details.push({ path, keyword: "minLength", message: `length must be >= ${schema.minLength}` });
       }
+      if (schema.maxLength !== undefined && value.length > schema.maxLength) {
+        details.push({ path, keyword: "maxLength", message: `length must be <= ${schema.maxLength}` });
+      }
       if (schema.pattern && !(new RegExp(schema.pattern).test(value))) {
         details.push({ path, keyword: "pattern", message: `must match ${schema.pattern}` });
       }
@@ -238,6 +360,18 @@ function validateValue(schema, value, path) {
   if (schema.type === "integer") {
     if (!Number.isInteger(value)) {
       details.push({ path, keyword: "type", message: "must be integer" });
+    } else {
+      if (schema.minimum !== undefined && value < schema.minimum) {
+        details.push({ path, keyword: "minimum", message: `must be >= ${schema.minimum}` });
+      }
+      if (schema.maximum !== undefined && value > schema.maximum) {
+        details.push({ path, keyword: "maximum", message: `must be <= ${schema.maximum}` });
+      }
+    }
+  }
+  if (schema.type === "number") {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      details.push({ path, keyword: "type", message: "must be number" });
     } else {
       if (schema.minimum !== undefined && value < schema.minimum) {
         details.push({ path, keyword: "minimum", message: `must be >= ${schema.minimum}` });

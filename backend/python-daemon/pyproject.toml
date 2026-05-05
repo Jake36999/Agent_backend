@@ -8,6 +8,7 @@ dependencies = [
   "requests",
   "PyMuPDF",
   "PyYAML",
+  "jsonschema",
 ]
 
 [project.optional-dependencies]

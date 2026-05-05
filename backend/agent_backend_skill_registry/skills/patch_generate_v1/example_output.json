@@ -1,0 +1,22 @@
+{
+  "summary": "Generated a diff proposal only.",
+  "unified_diff": "diff --git a/backend/python-daemon/orchestrator/skills/schema.py b/backend/python-daemon/orchestrator/skills/schema.py\n--- a/backend/python-daemon/orchestrator/skills/schema.py\n+++ b/backend/python-daemon/orchestrator/skills/schema.py\n@@ -0,0 +1,2 @@\n+class SkillManifestError(ValueError):\n+    pass\n",
+  "affected_files": [
+    "backend/python-daemon/orchestrator/skills/schema.py"
+  ],
+  "test_commands": [
+    "python -m unittest tests.test_skill_schema -v"
+  ],
+  "guardrail_checks": [
+    {
+      "rule": "diff_only",
+      "decision": "allow"
+    }
+  ],
+  "audit_state": {
+    "risk_tier": "T2",
+    "applied": false,
+    "requires_approval_for_apply": true
+  },
+  "next_action": "Present diff for approval before patch_apply_and_test_v1."
+}

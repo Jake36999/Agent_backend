@@ -1,0 +1,33 @@
+{
+  "summary": "Plan one regression around edit -> reindex -> search.",
+  "public_interface_under_test": "mcp_ingest_target + mcp_semantic_search behavior",
+  "behavior_slices": [
+    {
+      "slice": "single changed fixture file no longer returns old phrase"
+    }
+  ],
+  "red_steps": [
+    {
+      "step": "Add failing unit/integration test asserting old phrase disappears after reindex"
+    }
+  ],
+  "green_steps": [
+    {
+      "step": "Remove stale chunk/vector records before inserting changed chunks"
+    }
+  ],
+  "refactor_after_green": [
+    {
+      "step": "Extract stale cleanup helper if deletion logic duplicates directory ingestion"
+    }
+  ],
+  "declared_test_commands": [
+    "python -m unittest tests.test_chroma_and_ingest -v"
+  ],
+  "non_goals": [
+    {
+      "item": "No broad Chroma rebuild feature in this patch"
+    }
+  ],
+  "next_action": "Pass plan to patch_generate_v1."
+}

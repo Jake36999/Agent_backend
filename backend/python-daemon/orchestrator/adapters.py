@@ -7,6 +7,11 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Protocol
 
+from .active_partition.models import ActivePartition, MemoryProject
+from .active_partition.service import ActivePartitionService, ActivePartitionServiceError
+from .agent_workflow.bridge_client import InProcessToolClient
+from .agent_workflow.mcp_tool import run_agent_workflow
+from .memory.service import MemoryService
 from .tool_assist_adapter import ToolAssistAdapter
 
 import yaml
@@ -44,7 +49,21 @@ class WorkspaceScoutAdapter(Protocol):
         *,
         max_files: int = 500,
         include_summaries: bool = True,
-    ) -> dict[str, Any]:
+        ) -> dict[str, Any]:
+        ...
+
+
+class ActivePartitionAdapter(Protocol):
+    def get_active_partition(self) -> ActivePartition | None:
+        ...
+
+    def set_active_from_conversation_path(self, conversation_json_path: str, source_event: str = "manual_override") -> ActivePartition:
+        ...
+
+    def set_active_project(self, project_id: str, display_name: str | None = None) -> ActivePartition:
+        ...
+
+    def list_memory_projects(self) -> list[MemoryProject]:
         ...
 
 
@@ -168,6 +187,11 @@ class ToolAdapters:
         workspace_scout: WorkspaceScoutAdapter | None = None,
         ocr_provider: OCRProvider | None = None,
         tool_assist: ToolAssistAdapter | None = None,
+        active_partition: ActivePartitionService | None = None,
+        memory_service: MemoryService | None = None,
+        allowed_roots: tuple[Path, ...] | None = None,
+        skill_registry_root: Path | None = None,
+        queue_db_path: Path | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -175,6 +199,30 @@ class ToolAdapters:
         self.workspace_scout = workspace_scout
         self.ocr_provider = ocr_provider
         self.tool_assist = tool_assist or ToolAssistAdapter()
+        self.active_partition = active_partition
+        self.memory_service = memory_service
+        self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
+        self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
+        if queue_db_path is not None:
+            self.queue_db_path = Path(queue_db_path).resolve()
+        elif memory_service is not None and hasattr(memory_service, "repo") and hasattr(memory_service.repo, "queue_db"):
+            self.queue_db_path = Path(memory_service.repo.queue_db).resolve()
+        elif active_partition is not None and hasattr(active_partition, "repo") and hasattr(active_partition.repo, "queue_db"):
+            self.queue_db_path = Path(active_partition.repo.queue_db).resolve()
+        else:
+            self.queue_db_path = None
+
+    def _workflow_tool_client(self) -> InProcessToolClient:
+        return InProcessToolClient(
+            self.call_mcp_tool,
+            allowed_tools={
+                "mcp_investigation_start",
+                "mcp_investigation_filemap",
+                "mcp_investigation_validate_manifest",
+                "mcp_investigation_read_report",
+                "mcp_investigation_compile_handoff",
+            },
+        )
 
     def call_mcp_tool(self, tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -189,6 +237,121 @@ class ToolAdapters:
                         int(args.get("k", 8)),
                     ),
                 }
+            if tool_name == "mcp_get_active_partition":
+                if self.active_partition is None:
+                    raise AdapterFailure("active partition service is not configured")
+                partition = self.active_partition.get_active_partition()
+                if partition is None:
+                    return {
+                        "ok": False,
+                        "status": "NO_ACTIVE_PARTITION",
+                        "summary": "No active partition is available.",
+                        "artifacts": {},
+                        "error": {"code": "no_active_partition", "message": "No active partition is available."},
+                    }
+                return {"ok": True, "status": "OK", "summary": "Active partition loaded.", "partition": partition.to_dict(), "artifacts": {}}
+            if tool_name == "mcp_set_active_partition":
+                if self.active_partition is None:
+                    raise AdapterFailure("active partition service is not configured")
+                if "project_id" in args:
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": "mcp_set_active_partition accepts only conversation_path.",
+                        "artifacts": {},
+                        "error": {"code": "invalid_active_partition_input", "message": "mcp_set_active_partition accepts only conversation_path."},
+                    }
+                try:
+                    if not args.get("conversation_path"):
+                        return {
+                            "ok": False,
+                            "status": "POLICY_BLOCK",
+                            "summary": "conversation_path is required.",
+                            "artifacts": {},
+                            "error": {"code": "missing_active_partition_input", "message": "conversation_path is required."},
+                        }
+                    partition = self.active_partition.set_active_from_conversation_path(
+                        str(args["conversation_path"]),
+                        str(args.get("source_event", "manual_override")),
+                    )
+                except ActivePartitionServiceError as exc:
+                    return {
+                        "ok": False,
+                        "status": exc.code,
+                        "summary": exc.message,
+                        "artifacts": {},
+                        "error": exc.to_dict(),
+                    }
+                return {"ok": True, "status": "OK", "summary": "Active partition updated.", "partition": partition.to_dict(), "artifacts": {}}
+            if tool_name == "mcp_set_active_project_manual":
+                if self.active_partition is None:
+                    raise AdapterFailure("active partition service is not configured")
+                if "project_id" not in args:
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": "project_id is required.",
+                        "artifacts": {},
+                        "error": {"code": "missing_active_project_id", "message": "project_id is required."},
+                    }
+                try:
+                    partition = self.active_partition.set_active_project(
+                        str(args["project_id"]),
+                        display_name=args.get("display_name"),
+                    )
+                except ActivePartitionServiceError as exc:
+                    return {
+                        "ok": False,
+                        "status": exc.code,
+                        "summary": exc.message,
+                        "artifacts": {},
+                        "error": exc.to_dict(),
+                    }
+                return {"ok": True, "status": "OK", "summary": "Active project override updated.", "partition": partition.to_dict(), "artifacts": {}}
+            if tool_name == "mcp_list_memory_projects":
+                if self.active_partition is None:
+                    raise AdapterFailure("active partition service is not configured")
+                projects = [project.to_dict() for project in self.active_partition.list_memory_projects()]
+                return {"ok": True, "status": "OK", "summary": f"Loaded {len(projects)} memory projects.", "projects": projects, "artifacts": {}}
+            if tool_name == "mcp_semantic_search_active":
+                if self.memory_service is None:
+                    raise AdapterFailure("memory service is not configured")
+                return self.memory_service.semantic_search_active(str(args["query"]), int(args.get("k", 8)))
+            if tool_name == "mcp_commit_memory":
+                if self.memory_service is None:
+                    raise AdapterFailure("memory service is not configured")
+                metadata = args.get("metadata")
+                if metadata is not None and not isinstance(metadata, dict):
+                    raise AdapterFailure("metadata must be an object")
+                return self.memory_service.commit_memory(
+                    str(args["category"]),
+                    str(args["content"]),
+                    float(args.get("confidence_score", 1.0)),
+                    metadata=metadata,
+                )
+            if tool_name == "mcp_agent_workflow_run":
+                objective = args.get("objective")
+                target_repo = args.get("target_repo")
+                if not isinstance(objective, str) or not isinstance(target_repo, str):
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": "objective and target_repo are required.",
+                        "artifacts": {},
+                        "error": {"code": "missing_workflow_input", "message": "objective and target_repo are required."},
+                    }
+                return run_agent_workflow(
+                    objective=objective,
+                    target_repo=target_repo,
+                    profile=str(args.get("profile", "safe")),
+                    allow_ingest=bool(args.get("allow_ingest", False)),
+                    include_report_preview=bool(args.get("include_report_preview", False)),
+                    use_model_phases=bool(args.get("use_model_phases", False)),
+                    allowed_roots=self.allowed_roots if self.allowed_roots else None,
+                    skill_registry_root=self.skill_registry_root,
+                    queue_db_path=self.queue_db_path,
+                    tool_client=self._workflow_tool_client(),
+                )
             if tool_name == "mcp_ingest_target":
                 if self.semantic_memory is None:
                     raise AdapterFailure("semantic memory adapter is not configured")

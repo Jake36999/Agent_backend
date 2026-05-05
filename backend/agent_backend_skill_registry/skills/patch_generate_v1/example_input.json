@@ -1,0 +1,16 @@
+{
+  "objective": "Add strict manifest validation test.",
+  "target_repo": "agent_backend",
+  "tdd_plan": {
+    "red_steps": [
+      {
+        "step": "test invalid manifest quarantined"
+      }
+    ]
+  },
+  "candidate_files": [
+    {
+      "path": "orchestrator/skills/schema.py"
+    }
+  ]
+}

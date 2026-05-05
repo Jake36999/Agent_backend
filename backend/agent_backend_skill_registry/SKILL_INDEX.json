@@ -1,0 +1,225 @@
+{
+  "index_version": "0.1.0",
+  "generated_at": "2026-05-04",
+  "skills": [
+    {
+      "skill_id": "git_guardrails_v1",
+      "risk_tier": "T4",
+      "trigger_terms": [
+        "git push",
+        "git reset",
+        "git clean",
+        "destructive command",
+        "secret exposure",
+        "broad filesystem operation",
+        "commit",
+        "deploy"
+      ],
+      "capabilities": [
+        "trust_check",
+        "git_guardrails",
+        "command_policy",
+        "risk_classification"
+      ],
+      "entrypoint": "skills/git_guardrails_v1/SKILL.md",
+      "manifest": "skills/git_guardrails_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "bug_triage_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "triage bug",
+        "investigate bug",
+        "root cause",
+        "failing test",
+        "regression",
+        "diagnose",
+        "reproduction"
+      ],
+      "capabilities": [
+        "bug_triage",
+        "candidate_analysis",
+        "tdd_planning",
+        "root_cause_analysis"
+      ],
+      "entrypoint": "skills/bug_triage_v1/SKILL.md",
+      "manifest": "skills/bug_triage_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "candidate_analysis_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "candidate analysis",
+        "rank files",
+        "likely files",
+        "where to change",
+        "file candidates",
+        "function candidates"
+      ],
+      "capabilities": [
+        "candidate_analysis",
+        "workspace_ranking",
+        "semantic_search",
+        "deterministic_scoring"
+      ],
+      "entrypoint": "skills/candidate_analysis_v1/SKILL.md",
+      "manifest": "skills/candidate_analysis_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "architecture_review_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "architecture review",
+        "deep modules",
+        "shallow modules",
+        "coupling",
+        "missing boundary",
+        "testability",
+        "refactor architecture"
+      ],
+      "capabilities": [
+        "architecture_review",
+        "module_deepening",
+        "boundary_analysis",
+        "testability_review"
+      ],
+      "entrypoint": "skills/architecture_review_v1/SKILL.md",
+      "manifest": "skills/architecture_review_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "tdd_patch_plan_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "tdd plan",
+        "red green refactor",
+        "test first",
+        "patch plan",
+        "failing test",
+        "vertical slice"
+      ],
+      "capabilities": [
+        "tdd_planning",
+        "test_strategy",
+        "patch_planning",
+        "vertical_slice"
+      ],
+      "entrypoint": "skills/tdd_patch_plan_v1/SKILL.md",
+      "manifest": "skills/tdd_patch_plan_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "refactor_plan_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "refactor plan",
+        "phased refactor",
+        "architecture remediation",
+        "technical debt plan",
+        "rewrite plan"
+      ],
+      "capabilities": [
+        "refactor_planning",
+        "risk_planning",
+        "test_strategy",
+        "architecture_followup"
+      ],
+      "entrypoint": "skills/refactor_plan_v1/SKILL.md",
+      "manifest": "skills/refactor_plan_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "patch_generate_v1",
+      "risk_tier": "T2",
+      "trigger_terms": [
+        "generate patch",
+        "unified diff",
+        "patch only",
+        "create diff",
+        "do not apply"
+      ],
+      "capabilities": [
+        "patch_generation",
+        "diff_only",
+        "audit_state",
+        "guardrail_checked"
+      ],
+      "entrypoint": "skills/patch_generate_v1/SKILL.md",
+      "manifest": "skills/patch_generate_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "patch_apply_and_test_v1",
+      "risk_tier": "T3",
+      "trigger_terms": [
+        "apply approved patch",
+        "run declared tests",
+        "approved diff",
+        "patch apply",
+        "test approved patch"
+      ],
+      "capabilities": [
+        "approved_patch_application",
+        "test_execution",
+        "rollback_artifact",
+        "audit_state"
+      ],
+      "entrypoint": "skills/patch_apply_and_test_v1/SKILL.md",
+      "manifest": "skills/patch_apply_and_test_v1/skill.json",
+      "requires_user_approval": true,
+      "requires_diff_approval": true
+    },
+    {
+      "skill_id": "conversation_summary_ingest_v1",
+      "risk_tier": "T1",
+      "trigger_terms": [
+        "summarize conversation to memory",
+        "commit memory",
+        "project memory",
+        "conversation summary",
+        "ingest summary"
+      ],
+      "capabilities": [
+        "memory_ingest",
+        "bounded_summary",
+        "project_memory",
+        "verification_filter"
+      ],
+      "entrypoint": "skills/conversation_summary_ingest_v1/SKILL.md",
+      "manifest": "skills/conversation_summary_ingest_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    },
+    {
+      "skill_id": "skill_crystallize_v1",
+      "risk_tier": "T2",
+      "trigger_terms": [
+        "crystallize skill",
+        "write a skill",
+        "turn workflow into skill",
+        "candidate skill",
+        "SOP manifest"
+      ],
+      "capabilities": [
+        "skill_crystallization",
+        "sop_extraction",
+        "candidate_manifest",
+        "human_activation_required"
+      ],
+      "entrypoint": "skills/skill_crystallize_v1/SKILL.md",
+      "manifest": "skills/skill_crystallize_v1/skill.json",
+      "requires_user_approval": false,
+      "requires_diff_approval": false
+    }
+  ]
+}

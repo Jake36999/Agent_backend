@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any
-
+_UNSET = object()
 
 class ToolAssistAdapterError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
@@ -15,8 +15,17 @@ class ToolAssistAdapterError(RuntimeError):
 
 
 class ToolAssistAdapter:
-    def __init__(self, toolset_root: str | None = None, lta_output_root: str | None = None) -> None:
-        self.toolset_root = Path(toolset_root or os.getenv("TOOLSET_ROOT", "")).expanduser().resolve() if (toolset_root or os.getenv("TOOLSET_ROOT")) else None
+    def __init__(self, toolset_root: str | None | object = _UNSET, lta_output_root: str | None = None) -> None:
+        if toolset_root is _UNSET:
+            configured_root = os.getenv("TOOLSET_ROOT")
+        else:
+            configured_root = toolset_root
+
+        self.toolset_root = (
+            Path(configured_root).expanduser().resolve()
+            if configured_root
+            else None
+        )
         self.lta_output_root = lta_output_root or os.getenv("LTA_OUTPUT_ROOT")
         self._backend_api: Any | None = None
 

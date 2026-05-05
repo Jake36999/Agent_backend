@@ -1,0 +1,158 @@
+{
+  "skill_id": "skill_crystallize_v1",
+  "version": "0.1.0",
+  "name": "Skill crystallize",
+  "description": "Turn a successful, evidence-backed workflow into a candidate skill manifest and SKILL.md draft; never verifies, imports, enables, or activates the skill automatically.",
+  "triggers": [
+    "crystallize skill",
+    "write a skill",
+    "turn workflow into skill",
+    "candidate skill",
+    "SOP manifest"
+  ],
+  "capabilities": [
+    "skill_crystallization",
+    "sop_extraction",
+    "candidate_manifest",
+    "human_activation_required"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "source_run_summary": {
+        "type": "string"
+      },
+      "target_repo": {
+        "type": "string"
+      },
+      "successful_artifacts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "reusable_pattern": {
+        "type": "string"
+      },
+      "proposed_skill_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "source_run_summary",
+      "target_repo",
+      "reusable_pattern"
+    ]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "candidate_skill_id": {
+        "type": "string"
+      },
+      "source_run_artifacts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "reusable_pattern": {
+        "type": "string"
+      },
+      "activation_risk_tier": {
+        "type": "string",
+        "enum": [
+          "T1",
+          "T2",
+          "T3",
+          "T4",
+          "T5"
+        ]
+      },
+      "requires_human_activation": {
+        "type": "boolean"
+      },
+      "proposed_skill_json": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "proposed_skill_md": {
+        "type": "string"
+      },
+      "next_action": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "summary",
+      "candidate_skill_id",
+      "requires_human_activation",
+      "proposed_skill_json",
+      "proposed_skill_md",
+      "next_action"
+    ]
+  },
+  "project_scope": [
+    "*"
+  ],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_get_active_partition",
+    "mcp_semantic_search_active",
+    "mcp_scout_workspace"
+  ],
+  "risk_tier": "T2",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": [
+    "candidate_skill_json",
+    "candidate_skill_md",
+    "activation_rationale"
+  ],
+  "examples": [
+    {
+      "input": {
+        "source_run_summary": "Repeated successful triage process for stale vector bugs.",
+        "target_repo": "agent_backend",
+        "reusable_pattern": "reproduce stale search, rank ingest candidates, create TDD regression",
+        "proposed_skill_id": "stale_vector_triage_v1"
+      },
+      "output": {
+        "summary": "Drafted a candidate skill from a verified repeated workflow.",
+        "candidate_skill_id": "stale_vector_triage_v1",
+        "source_run_artifacts": [
+          {
+            "artifact": "triage_report",
+            "verified": true
+          }
+        ],
+        "reusable_pattern": "Use edit -> reindex -> search loop to diagnose stale vector bugs.",
+        "activation_risk_tier": "T1",
+        "requires_human_activation": true,
+        "proposed_skill_json": {
+          "skill_id": "stale_vector_triage_v1",
+          "version": "0.1.0"
+        },
+        "proposed_skill_md": "# Stale vector triage v1\n\nDraft instructions...",
+        "next_action": "Submit candidate for human review and backend validation."
+      }
+    }
+  ]
+}

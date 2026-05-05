@@ -1,0 +1,6 @@
+{
+  "source_run_summary": "Repeated successful triage process for stale vector bugs.",
+  "target_repo": "agent_backend",
+  "reusable_pattern": "reproduce stale search, rank ingest candidates, create TDD regression",
+  "proposed_skill_id": "stale_vector_triage_v1"
+}

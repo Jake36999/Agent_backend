@@ -1,0 +1,40 @@
+{
+  "summary": "Skill support should be isolated behind registry/importer/selector/executor seams.",
+  "deepening_opportunities": [
+    {
+      "module": "orchestrator/skills/registry.py",
+      "reason": "hide persistence/status rules behind a small API"
+    }
+  ],
+  "shallow_modules": [],
+  "missing_boundaries": [
+    {
+      "boundary": "skill selector vs executor",
+      "risk": "selection policy may become coupled to mutation logic"
+    }
+  ],
+  "adapter_candidates": [
+    {
+      "adapter": "SkillInstructionLoader",
+      "purpose": "lazy-load SKILL.md only after selection"
+    }
+  ],
+  "deletion_test_results": [
+    {
+      "candidate": "skills/executor.py",
+      "result": "complexity would leak into workflow runner if absent"
+    }
+  ],
+  "testability_friction": [
+    {
+      "issue": "approval gating must be injectable for unit tests"
+    }
+  ],
+  "priority_findings": [
+    {
+      "priority": "P0",
+      "finding": "split importer, selector, executor, and trust checker"
+    }
+  ],
+  "next_action": "Create phased refactor plan for skills package."
+}
