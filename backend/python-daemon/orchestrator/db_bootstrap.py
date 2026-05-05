@@ -312,6 +312,71 @@ ON patch_artifacts(status);
 """
 
 
+QUEUE_MIGRATION_0007 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS approval_records (
+  approval_id TEXT PRIMARY KEY,
+  patch_id TEXT NOT NULL,
+  run_id TEXT,
+  project_id TEXT,
+  project_scope_hash TEXT,
+  target_repo TEXT NOT NULL,
+  approved INTEGER NOT NULL DEFAULT 0 CHECK (approved IN (0, 1)),
+  approved_by TEXT,
+  approved_at TEXT,
+  approval_scope TEXT,
+  approved_diff_sha256 TEXT NOT NULL,
+  declared_tests_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  notes TEXT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_approval_records_patch_id
+ON approval_records(patch_id);
+
+CREATE TABLE IF NOT EXISTS patch_apply_runs (
+  apply_run_id TEXT PRIMARY KEY,
+  patch_id TEXT NOT NULL,
+  approval_id TEXT NOT NULL,
+  run_id TEXT,
+  project_id TEXT,
+  project_scope_hash TEXT,
+  target_repo TEXT NOT NULL,
+  status TEXT NOT NULL,
+  applied_at TEXT,
+  completed_at TEXT,
+  rollback_available INTEGER NOT NULL DEFAULT 0 CHECK (rollback_available IN (0, 1)),
+  tests_status TEXT,
+  bounded_error TEXT
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_patch_apply_runs_patch_id
+ON patch_apply_runs(patch_id);
+
+CREATE INDEX IF NOT EXISTS idx_patch_apply_runs_approval_id
+ON patch_apply_runs(approval_id);
+
+CREATE TABLE IF NOT EXISTS file_snapshots (
+  snapshot_file_id TEXT PRIMARY KEY,
+  apply_run_id TEXT NOT NULL,
+  patch_id TEXT NOT NULL,
+  target_path TEXT NOT NULL,
+  pre_apply_sha256 TEXT,
+  pre_apply_size INTEGER,
+  backup_path TEXT,
+  created_at TEXT NOT NULL,
+  created_target INTEGER NOT NULL DEFAULT 0 CHECK (created_target IN (0, 1))
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_file_snapshots_apply_run_id
+ON file_snapshots(apply_run_id);
+"""
+
+
 CONTROL_MIGRATION_0001 = """
 PRAGMA journal_mode = WAL;
 PRAGMA synchronous = NORMAL;
@@ -361,6 +426,7 @@ QUEUE_MIGRATIONS = (
     ("0004_skill_manifests", QUEUE_MIGRATION_0004),  # noqa: F821
     ("0005_snapshot_patch_records", QUEUE_MIGRATION_0005),
     ("0006_patch_artifacts", QUEUE_MIGRATION_0006),
+    ("0007_patch_apply_approvals", QUEUE_MIGRATION_0007),
 )
 CONTROL_MIGRATIONS = (("0001_initial", CONTROL_MIGRATION_0001),)
 

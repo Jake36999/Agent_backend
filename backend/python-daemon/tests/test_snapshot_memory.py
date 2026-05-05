@@ -24,7 +24,7 @@ class FakeChroma:
 
 
 class SnapshotMemoryTests(unittest.TestCase):
-    def test_snapshot_table_exists_without_rollback_tables(self):
+    def test_snapshot_table_exists_with_later_patch_tables(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             bootstrap_databases(root)
@@ -35,7 +35,7 @@ class SnapshotMemoryTests(unittest.TestCase):
 
             self.assertIn("0005_snapshot_patch_records", versions)
             self.assertIn("snapshot_records", tables)
-            self.assertNotIn("file_snapshots", tables)
+            self.assertIn("file_snapshots", tables)
 
     def test_workflow_result_creates_compact_snapshot_record_and_indexes(self):
         with tempfile.TemporaryDirectory() as tmp:

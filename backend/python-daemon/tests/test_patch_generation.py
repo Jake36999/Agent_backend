@@ -26,7 +26,6 @@ class PatchGenerationTests(unittest.TestCase):
 
             self.assertIn("0006_patch_artifacts", versions)
             self.assertIn("patch_artifacts", tables)
-            self.assertNotIn("file_snapshots", tables)
             self.assertNotIn("patch_artifacts", control_tables)
 
     def test_patch_generation_writes_patch_outside_target_repo_and_stores_metadata(self):

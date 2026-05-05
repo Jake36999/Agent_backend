@@ -59,9 +59,58 @@ class PatchArtifact:
         return {
             "patch_id": self.patch_id,
             "status": self.status,
+            "target_repo": self.target_repo,
             "patch_path": self.patch_path,
             "diff_sha256": self.diff_sha256,
             "affected_paths": list(self.affected_paths_json),
             "validation_status": self.validation_status,
             "validation_error": self.validation_error,
         }
+
+
+@dataclass(frozen=True)
+class ApprovalRecord:
+    approval_id: str
+    patch_id: str
+    run_id: str | None
+    project_id: str | None
+    project_scope_hash: str | None
+    target_repo: str
+    approved: bool
+    approved_by: str | None
+    approved_at: str | None
+    approval_scope: str | None
+    approved_diff_sha256: str
+    declared_tests_json: list[list[str]]
+    created_at: str
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    snapshot_file_id: str
+    apply_run_id: str
+    patch_id: str
+    target_path: str
+    pre_apply_sha256: str | None
+    pre_apply_size: int | None
+    backup_path: str | None
+    created_at: str
+    created_target: bool = False
+
+
+@dataclass(frozen=True)
+class PatchApplyRun:
+    apply_run_id: str
+    patch_id: str
+    approval_id: str
+    run_id: str | None
+    project_id: str | None
+    project_scope_hash: str | None
+    target_repo: str
+    status: str
+    applied_at: str | None
+    completed_at: str | None
+    rollback_available: bool
+    tests_status: str | None
+    bounded_error: str | None = None

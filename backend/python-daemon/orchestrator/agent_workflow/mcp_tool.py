@@ -12,6 +12,7 @@ from orchestrator.candidate_analysis.service import CandidateAnalysisService
 from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
 from orchestrator.memory.service import MemoryService
 from orchestrator.memory.snapshots import SnapshotMemoryService
+from orchestrator.patching.apply import PatchApplyService
 from orchestrator.skills.importer import SkillImporter
 from orchestrator.skills.registry import SkillRegistry
 from orchestrator.skills.selection import select_skill
@@ -207,6 +208,8 @@ def run_agent_workflow(
     snapshot_memory: SnapshotMemoryService | None = None,
     conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
     candidate_analysis: CandidateAnalysisService | None = None,
+    patch_apply: PatchApplyService | None = None,
+    patch_apply_request: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -241,6 +244,7 @@ def run_agent_workflow(
         snapshot_memory=snapshot_memory,
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
+        patch_apply=patch_apply,
     )
     try:
         _, response = runner.run(
@@ -256,6 +260,7 @@ def run_agent_workflow(
             skill_registry_root=resolved_registry_root,
             verified_skill_count=verified_skill_count,
             selector_candidate_scores=selector_candidate_scores,
+            patch_apply_request=patch_apply_request,
         )
         return response
     except Exception as exc:

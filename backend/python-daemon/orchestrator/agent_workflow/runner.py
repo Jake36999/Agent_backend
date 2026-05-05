@@ -10,6 +10,7 @@ from orchestrator.candidate_analysis.service import CandidateAnalysisService
 from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
 from orchestrator.memory.service import MemoryService
 from orchestrator.memory.snapshots import SnapshotMemoryService
+from orchestrator.patching.apply import PatchApplyService
 
 from .bridge_client import TcpBridgeClient
 from .compaction import compact_tool_result
@@ -33,6 +34,7 @@ class WorkflowRunner:
         snapshot_memory: SnapshotMemoryService | None = None,
         conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
         candidate_analysis: CandidateAnalysisService | None = None,
+        patch_apply: PatchApplyService | None = None,
     ) -> None:
         self.lm_client = lm_client
         self.bridge_client = bridge_client
@@ -46,6 +48,7 @@ class WorkflowRunner:
         self.snapshot_memory = snapshot_memory
         self.conversation_summary_ingestor = conversation_summary_ingestor
         self.candidate_analysis = candidate_analysis
+        self.patch_apply = patch_apply
 
     def run(
         self,
@@ -62,6 +65,7 @@ class WorkflowRunner:
         skill_registry_root: str = "",
         verified_skill_count: int = 0,
         selector_candidate_scores: list[dict[str, Any]] | None = None,
+        patch_apply_request: dict[str, str] | None = None,
     ) -> tuple[WorkflowState, dict[str, Any]]:
         state = WorkflowState(
             run_id=str(uuid.uuid4()),
@@ -76,6 +80,9 @@ class WorkflowRunner:
             selected_skill=selected_skill,
             warnings=list(skill_warnings or []),
         )
+
+        if patch_apply_request is not None:
+            return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
         plan = self._build_plan(objective, target_repo, profile)
         if len(plan) > self.max_steps:
@@ -160,6 +167,33 @@ class WorkflowRunner:
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
         return state, self._final_response(state, state_path, ok=True, status="COMPLETE")
+
+    def _run_internal_patch_apply(self, state: WorkflowState, target_repo: str, patch_apply_request: dict[str, str]) -> tuple[WorkflowState, dict[str, Any]]:
+        state.phase = "PATCH_APPLY"
+        if self.patch_apply is None:
+            state.errors.append({"code": "patch_apply_unavailable", "message": "Patch apply service is not configured."})
+            state.final_summary = "Patch apply service is not configured."
+            state_path = state.save(self.state_dir)
+            return state, self._final_response(state, state_path, ok=False, status="ERROR")
+        patch_id = str(patch_apply_request.get("patch_id") or "")
+        approval_id = str(patch_apply_request.get("approval_id") or "")
+        if not patch_id or not approval_id:
+            state.errors.append({"code": "missing_patch_apply_request", "message": "patch_id and approval_id are required."})
+            state.final_summary = "Patch apply request requires patch_id and approval_id."
+            state_path = state.save(self.state_dir)
+            return state, self._final_response(state, state_path, ok=False, status="POLICY_BLOCK")
+        result = self.patch_apply.apply_approved_patch(patch_id=patch_id, approval_id=approval_id, target_repo=target_repo)
+        compact = {
+            "apply_run_id": result.get("apply_run_id"),
+            "rollback_available": bool(result.get("rollback_available", False)),
+            "tests_status": result.get("tests_status"),
+            "patch_apply_status": result.get("status"),
+        }
+        state.artifacts["patch_apply"] = compact
+        state.final_summary = "Approved patch apply completed." if result.get("ok") else "Approved patch apply did not complete."
+        state.phase = "FINAL"
+        state_path = state.save(self.state_dir)
+        return state, self._final_response(state, state_path, ok=bool(result.get("ok")), status=str(result.get("status", "ERROR")))
 
     def _build_plan(self, objective: str, target_repo: str, profile: str) -> list[dict[str, Any]]:
         return [

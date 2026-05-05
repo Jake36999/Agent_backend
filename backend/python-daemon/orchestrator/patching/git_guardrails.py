@@ -24,6 +24,8 @@ class GitGuardrailsService:
             subcommand = lowered[1] if len(lowered) > 1 else ""
             if subcommand in self.allowed_git_read:
                 return GuardrailResult(True)
+            if subcommand == "apply" and any(part.startswith("--whitespace") for part in lowered):
+                return GuardrailResult(False, "blocked whitespace mutation mode")
             if subcommand == "apply" and "--check" in lowered and not {"--index", "--cached", "--3way"}.intersection(lowered):
                 return GuardrailResult(True)
             if subcommand in self.blocked_git or (subcommand == "reset" and "--hard" in lowered):

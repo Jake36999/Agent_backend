@@ -42,8 +42,9 @@ class PatchGenerationService:
         patch_id = f"patch_{uuid.uuid4().hex}"
         self.artifact_root.mkdir(parents=True, exist_ok=True)
         patch_path = self.artifact_root / f"{patch_id}.diff"
-        patch_path.write_text(diff_text, encoding="utf-8")
-        digest = hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
+        diff_bytes = diff_text.encode("utf-8")
+        patch_path.write_bytes(diff_bytes)
+        digest = hashlib.sha256(diff_bytes).hexdigest()
         artifact = PatchArtifact(
             patch_id=patch_id,
             run_id=run_id,
@@ -73,12 +74,14 @@ class PatchGenerationService:
             rel_path = str(change["rel_path"]).replace("\\", "/")
             before = str(change.get("before") or "")
             after = str(change.get("after") or "")
+            fromfile = f"a/{rel_path}" if before else "/dev/null"
+            tofile = f"b/{rel_path}" if after else "/dev/null"
             pieces.extend(
                 difflib.unified_diff(
                     before.splitlines(),
                     after.splitlines(),
-                    fromfile=f"a/{rel_path}",
-                    tofile=f"b/{rel_path}",
+                    fromfile=fromfile,
+                    tofile=tofile,
                     lineterm="\n",
                 )
             )

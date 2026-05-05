@@ -97,7 +97,15 @@ class PatchValidationService:
             return "absolute patch paths are not allowed"
         if any(fnmatch.fnmatch(normalized, pattern) for pattern in self.blocked_patterns):
             return "blocked generated, Tool Assist, or secret/env target"
-        target = (repo / normalized).resolve()
+        candidate = repo / normalized
+        if candidate.is_symlink():
+            return "symlink target mutation is not allowed"
+        for parent in candidate.parents:
+            if parent == repo:
+                break
+            if parent.is_symlink():
+                return "symlink parent mutation is not allowed"
+        target = candidate.resolve()
         if not (target == repo or repo in target.parents):
             return "patch target escapes target_repo"
         return None

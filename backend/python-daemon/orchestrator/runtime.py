@@ -15,6 +15,7 @@ from .memory.repo import MemoryRepository
 from .memory.service import MemoryService
 from .memory.snapshots import SnapshotMemoryService
 from .patching.service import PatchGenerationService
+from .patching.apply import PatchApplyService
 from .tool_assist_adapter import ToolAssistAdapter
 from .db_bootstrap import bootstrap_databases
 from .execution_loop import ExecutionLoop
@@ -40,6 +41,7 @@ class RuntimeComponents:
     conversation_summary_ingestor: ConversationSummaryIngestor | None = None
     candidate_analysis: CandidateAnalysisService | None = None
     patch_generation: PatchGenerationService | None = None
+    patch_apply: PatchApplyService | None = None
 
     def health(self) -> dict[str, object]:
         return {
@@ -96,6 +98,7 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
     conversation_summary_ingestor = ConversationSummaryIngestor()
     candidate_analysis = CandidateAnalysisService()
     patch_generation = PatchGenerationService(repo.queue_db, config.state_dir / "patch_artifacts", allowed_roots=config.allowed_roots)
+    patch_apply = PatchApplyService(repo.queue_db, config.state_dir / "rollback", allowed_roots=config.allowed_roots)
     active_partition_watcher = None
     if config.enable_lmstudio_watcher:
         active_partition_watcher = ActivePartitionWatcher(
@@ -124,6 +127,7 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
         patch_generation=patch_generation,
+        patch_apply=patch_apply,
         allowed_roots=config.allowed_roots,
         skill_registry_root=config.skill_registry_root,
         queue_db_path=repo.queue_db,
@@ -141,4 +145,5 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
         patch_generation=patch_generation,
+        patch_apply=patch_apply,
     )
