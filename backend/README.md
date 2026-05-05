@@ -99,9 +99,18 @@ aletheia-admin show-config
 aletheia-admin health
 aletheia-admin reconcile-project my-project
 aletheia-admin list-dead-letters --limit 25
+aletheia-admin smoke-patch-flow --state-dir C:\path\to\.aletheia_state --allowed-root C:\path\to\workspace
+aletheia-admin list-patch-artifacts --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin show-patch-artifact --state-dir C:\path\to\.aletheia_state PATCH_ID
+aletheia-admin list-patch-apply-runs --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin show-patch-apply-run --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID
+aletheia-admin list-approvals --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin list-file-snapshots --state-dir C:\path\to\.aletheia_state --apply-run-id APPLY_RUN_ID
+aletheia-admin verify-patch-rollback --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID
+aletheia-admin restore-patch-run --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID --confirm
 ```
 
-The admin CLI calls Python internals directly. It does not expose filesystem mutation tools.
+The admin CLI calls Python internals directly. Patch apply and rollback restore are internal/admin-only and must not be exposed through LM Studio `allowed_tools` yet.
 
 ## Operations
 
@@ -121,6 +130,11 @@ The admin CLI calls Python internals directly. It does not expose filesystem mut
 - Tool Assist remains an external dependency loaded from `TOOLSET_ROOT` (not vendored into this backend).
 - Failed vector upserts are recoverable with `aletheia-admin reconcile-project`.
 - Dead letters are stored in `control.db` and can be inspected with `aletheia-admin list-dead-letters`.
+- T3 patch apply requires an existing patch artifact, an explicit `approval_records` row with `approved=true`, and an approved diff SHA256 matching the exact stored patch file.
+- Patch artifacts and rollback backups are stored under backend state/artifact directories, outside source repos. SQLite stores compact paths, IDs, hashes, status, and bounded errors only.
+- `smoke-patch-flow` creates a disposable git repo and validates patch generation, approval, apply, rollback snapshots, and restore without touching a real repo. Passing `--target-repo-test-fixture` requires an empty disposable fixture path.
+- Patch inspection commands print compact JSON only: IDs, statuses, hashes, affected paths, rollback availability, declared test summaries, and bounded errors. They do not print raw diffs, source files, backup contents, full logs, env vars, or secrets.
+- Successful internal patch apply may commit a compact artifact memory record when an active LM Studio partition exists. The memory summary includes patch/apply IDs, target repo, affected paths, test status, and rollback availability, never raw diffs or source contents.
 - Do not ingest generated extraction bundles or directories such as `New project_bundle_*`, `*_bundle*.py`, or `*_bundle*.yaml`.
 - Worker heartbeats and process state are stored in `process_registry`.
 

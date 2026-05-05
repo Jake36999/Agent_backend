@@ -236,9 +236,28 @@ aletheia-admin show-config
 aletheia-admin health
 aletheia-admin reconcile-project my-project
 aletheia-admin list-dead-letters --limit 25
+aletheia-admin smoke-patch-flow --state-dir C:\path\to\.aletheia_state --allowed-root C:\path\to\workspace
+aletheia-admin list-patch-artifacts --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin show-patch-artifact --state-dir C:\path\to\.aletheia_state PATCH_ID
+aletheia-admin list-patch-apply-runs --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin show-patch-apply-run --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID
+aletheia-admin list-approvals --state-dir C:\path\to\.aletheia_state --limit 25
+aletheia-admin list-file-snapshots --state-dir C:\path\to\.aletheia_state --apply-run-id APPLY_RUN_ID
+aletheia-admin verify-patch-rollback --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID
+aletheia-admin restore-patch-run --state-dir C:\path\to\.aletheia_state APPLY_RUN_ID --confirm
 ```
 
-Admin CLI operations are for local operator diagnostics and recovery. They are not public MCP tools.
+Admin CLI operations are for local operator diagnostics and recovery. They are not public MCP tools. Approved patch apply and rollback restore are internal/admin-only; do not expose them through LM Studio `allowed_tools`.
+
+### Internal T3 patch flow
+
+- T2 creates a patch artifact outside source repos and stores only path/hash/affected-path metadata.
+- T3 apply requires an explicit approval record with `approved=true` and an `approved_diff_sha256` matching the exact stored patch file.
+- Apply preflights with `git apply --check`, snapshots affected files under backend state rollback artifacts, then applies only the approved patch bytes.
+- Rollback restores from snapshot files and verifies SHA256. New files created by a patch are recorded and rollback deletes only those exact recorded paths under the target repo.
+- Declared tests are argv arrays only, run with `shell=False` and bounded timeouts. Full stdout/stderr logs are not stored.
+- Successful applies can commit compact active memory when an active LM Studio partition exists. The memory record includes patch/apply IDs, affected paths, test status, and rollback availability; it excludes raw diffs, source contents, backup contents, env dumps, and secrets.
+- `smoke-patch-flow` creates a disposable repo and exercises generation, approval, apply, snapshot, and restore. It refuses non-empty fixture paths so operators do not accidentally run the harness against real source trees.
 
 ## Controlled smoke test
 

@@ -33,6 +33,8 @@ class PatchApplyService:
         subprocess_run: Callable[..., Any] = subprocess.run,
         timeout_seconds: float = 10.0,
         test_runner: DeclaredTestRunner | None = None,
+        memory_service: Any | None = None,
+        conversation_summary_ingestor: Any | None = None,
     ) -> None:
         self.repo = PatchArtifactRepository(queue_db_path)
         self.rollback_root = Path(rollback_root).resolve()
@@ -43,6 +45,8 @@ class PatchApplyService:
         self.snapshots = RollbackSnapshotService(queue_db_path, self.rollback_root)
         self.rollback = RollbackRestoreService(queue_db_path, self.rollback_root)
         self.test_runner = test_runner or DeclaredTestRunner(timeout_seconds=timeout_seconds)
+        self.memory_service = memory_service
+        self.conversation_summary_ingestor = conversation_summary_ingestor
 
     def validate_patch_text(self, diff_text: str, *, target_repo: str | Path) -> PatchValidationResult:
         return self.validator.validate_unified_diff(diff_text, target_repo=target_repo, run_git_check=False)
@@ -50,39 +54,39 @@ class PatchApplyService:
     def apply_approved_patch(self, *, patch_id: str, approval_id: str, target_repo: str | Path) -> dict[str, object]:
         repo_path = Path(target_repo).resolve()
         if not self._is_under_allowed(repo_path):
-            return {"ok": False, "status": "POLICY_BLOCK", "patch_id": patch_id, "error": "target_repo is outside allowed roots"}
+            return self._failure("validate", "POLICY_BLOCK", patch_id, message="target_repo is outside allowed roots", validation_code="outside_allowed_roots")
         artifact = self.repo.get(patch_id)
         if artifact is None:
-            return {"ok": False, "status": "PATCH_NOT_FOUND", "patch_id": patch_id}
+            return self._failure("load_patch", "PATCH_NOT_FOUND", patch_id, message="patch artifact was not found")
         approval = self.repo.get_approval_record(approval_id)
         if approval is None:
-            return {"ok": False, "status": "APPROVAL_NOT_FOUND", "patch_id": patch_id, "approval_id": approval_id}
+            return self._failure("load_approval", "APPROVAL_NOT_FOUND", patch_id, approval_id=approval_id, message="approval record was not found")
         if approval.patch_id != patch_id:
-            return {"ok": False, "status": "APPROVAL_PATCH_MISMATCH", "patch_id": patch_id, "approval_id": approval_id}
+            return self._failure("approval", "APPROVAL_PATCH_MISMATCH", patch_id, approval_id=approval_id, message="approval does not reference this patch")
         if not approval.approved:
-            return {"ok": False, "status": "PENDING_APPROVAL", "patch_id": patch_id, "approval_id": approval_id}
+            return self._failure("approval", "PENDING_APPROVAL", patch_id, approval_id=approval_id, message="approval is not approved")
         if approval.approved_diff_sha256 != artifact.diff_sha256:
-            return {"ok": False, "status": "APPROVAL_HASH_MISMATCH", "patch_id": patch_id, "approval_id": approval_id}
+            return self._failure("approval", "APPROVAL_HASH_MISMATCH", patch_id, approval_id=approval_id, message="approved diff sha256 does not match patch artifact")
         patch_path = Path(artifact.patch_path).resolve()
         if patch_path == repo_path or repo_path in patch_path.parents:
-            return {"ok": False, "status": "POLICY_BLOCK", "patch_id": patch_id, "error": "patch path must be outside target_repo"}
+            return self._failure("validate", "POLICY_BLOCK", patch_id, message="patch path must be outside target_repo", validation_code="patch_path_inside_repo")
         if not patch_path.exists():
-            return {"ok": False, "status": "PATCH_FILE_MISSING", "patch_id": patch_id}
+            return self._failure("load_patch", "PATCH_FILE_MISSING", patch_id, message="patch file is missing")
         diff_bytes = patch_path.read_bytes()
         if hashlib.sha256(diff_bytes).hexdigest() != artifact.diff_sha256:
-            return {"ok": False, "status": "PATCH_HASH_MISMATCH", "patch_id": patch_id}
+            return self._failure("load_patch", "PATCH_HASH_MISMATCH", patch_id, message="patch file sha256 does not match stored sha256")
         try:
             diff_text = diff_bytes.decode("utf-8")
         except UnicodeDecodeError:
-            return {"ok": False, "status": "POLICY_BLOCK", "patch_id": patch_id, "error": "patch must be utf-8 unified diff text"}
+            return self._failure("validate", "POLICY_BLOCK", patch_id, message="patch must be utf-8 unified diff text", validation_code="patch_not_utf8")
         validation = self.validator.validate_unified_diff(diff_text, target_repo=repo_path, run_git_check=False)
         if not validation.ok:
-            return {"ok": False, "status": validation.status, "patch_id": patch_id, "error": validation.error}
+            return self._failure("validate", validation.status, patch_id, message=validation.error or "patch validation failed", validation_code="patch_validation_failed")
         if sorted(validation.affected_paths) != sorted(artifact.affected_paths_json):
-            return {"ok": False, "status": "AFFECTED_PATH_MISMATCH", "patch_id": patch_id}
+            return self._failure("validate", "AFFECTED_PATH_MISMATCH", patch_id, message="affected paths do not match patch artifact metadata")
         check = self._git_apply(repo_path, diff_bytes, check=True)
         if check["returncode"] != 0:
-            return {"ok": False, "status": "APPLY_CHECK_FAILED", "patch_id": patch_id, "error": check["stderr_tail"] or check["stdout_tail"]}
+            return self._failure("preflight", "APPLY_CHECK_FAILED", patch_id, message=check["stderr_tail"] or check["stdout_tail"], validation_code="git_apply_check_failed")
 
         apply_run_id = f"apply_{uuid.uuid4().hex}"
         self.repo.insert_apply_run(
@@ -111,7 +115,7 @@ class PatchApplyService:
             self.repo.update_apply_run(apply_run_id, status="SNAPSHOTTED", rollback_available=True)
         except Exception as exc:
             self.repo.update_apply_run(apply_run_id, status="SNAPSHOT_FAILED", completed_at=utc_now(), bounded_error=bounded(exc))
-            return {"ok": False, "status": "SNAPSHOT_FAILED", "patch_id": patch_id, "apply_run_id": apply_run_id, "error": bounded(exc)}
+            return self._failure("snapshot", "SNAPSHOT_FAILED", patch_id, apply_run_id=apply_run_id, message=exc)
 
         applied = self._git_apply(repo_path, diff_bytes, check=False)
         if applied["returncode"] != 0:
@@ -144,9 +148,17 @@ class PatchApplyService:
                     "rollback_available": True,
                     "tests_status": tests_status,
                     "error": bounded(exc),
+                    "diagnostic": self._diagnostic("test", "TESTS_BLOCKED", patch_id, apply_run_id=apply_run_id, message=exc),
                 }
         final_status = "APPLIED_TESTS_PASSED" if tests_status == "passed" else ("APPLIED_TESTS_FAILED" if tests_status == "failed" else "APPLIED")
         self.repo.update_apply_run(apply_run_id, status=final_status, tests_status=tests_status, completed_at=utc_now(), rollback_available=True)
+        memory_commit = self._commit_patch_memory(
+            artifact=artifact,
+            apply_run_id=apply_run_id,
+            target_repo=repo_path,
+            affected_paths=validation.affected_paths,
+            tests_status=tests_status,
+        )
         return {
             "ok": tests_status in {"not_run", "passed"},
             "status": final_status,
@@ -155,6 +167,7 @@ class PatchApplyService:
             "rollback_available": True,
             "tests_status": tests_status,
             "test_results": test_results,
+            "memory_commit": memory_commit,
         }
 
     def _git_apply(self, target_repo: Path, diff_bytes: bytes, *, check: bool) -> dict[str, object]:
@@ -185,3 +198,78 @@ class PatchApplyService:
 
     def _is_under_allowed(self, path: Path) -> bool:
         return any(path == root or root in path.parents for root in self.allowed_roots)
+
+    def _commit_patch_memory(self, *, artifact: Any, apply_run_id: str, target_repo: Path, affected_paths: list[str], tests_status: str) -> dict[str, object]:
+        if self.memory_service is None:
+            return {"status": "SKIPPED", "reason": "memory_service_unavailable"}
+        active_repo = getattr(self.memory_service, "active_repo", None)
+        if active_repo is not None:
+            active = active_repo.get_active_partition(getattr(self.memory_service, "client_id", "local-lmstudio"))
+            if active is None or not active.active_project_id or not active.active_project_scope_hash:
+                return {"status": "SKIPPED", "reason": "no_active_partition"}
+        content = (
+            "Approved patch applied.\n"
+            f"patch_id: {artifact.patch_id}\n"
+            f"apply_run_id: {apply_run_id}\n"
+            f"target_repo: {target_repo}\n"
+            f"affected_paths: {', '.join(affected_paths)}\n"
+            f"selected_skill_id: {artifact.selected_skill_id or 'unknown'}\n"
+            f"tests_status: {tests_status}\n"
+            "rollback_available: true"
+        )
+        metadata = {
+            "patch_id": artifact.patch_id,
+            "apply_run_id": apply_run_id,
+            "target_repo": str(target_repo),
+            "affected_paths": list(affected_paths),
+            "selected_skill_id": artifact.selected_skill_id,
+            "tests_status": tests_status,
+            "rollback_available": True,
+            "source": "patch_apply_service",
+        }
+        if self.conversation_summary_ingestor is not None:
+            candidate = self.conversation_summary_ingestor.build_memory_candidate(
+                conversation_events=[{"type": "tool_result", "content": content}],
+                target_repo=str(target_repo),
+                source_artifacts=[{"artifact": artifact.patch_id, "status": "completed", "verified": True, "summary": f"Approved patch {artifact.patch_id} applied."}],
+                write_intent="approved patch apply result",
+                selected_skill={"skill_id": artifact.selected_skill_id} if artifact.selected_skill_id else None,
+            )
+            if not candidate.get("write_allowed"):
+                return {"status": "SKIPPED", "reason": "memory_candidate_not_allowed"}
+            result = self.conversation_summary_ingestor.commit_if_allowed(candidate_result=candidate, memory_service=self.memory_service)
+        else:
+            result = self.memory_service.commit_memory(category="artifact", content=content, metadata=metadata)
+        if result.get("status") == "NO_ACTIVE_PARTITION":
+            return {"status": "SKIPPED", "reason": "no_active_partition"}
+        return {
+            "status": result.get("status", "ERROR"),
+            "memory_id": result.get("memory_id"),
+            "index_status": result.get("index_status"),
+            "ok": bool(result.get("ok")),
+        }
+
+    def _diagnostic(self, phase: str, status: str, patch_id: str, *, apply_run_id: str | None = None, approval_id: str | None = None, affected_path: str | None = None, validation_code: str | None = None, message: object = "") -> dict[str, object]:
+        return {
+            "phase": phase,
+            "status": status,
+            "patch_id": patch_id,
+            **({"apply_run_id": apply_run_id} if apply_run_id else {}),
+            **({"approval_id": approval_id} if approval_id else {}),
+            **({"affected_path": affected_path} if affected_path else {}),
+            **({"validation_code": validation_code} if validation_code else {}),
+            "message": bounded(message, 500),
+        }
+
+    def _failure(self, phase: str, status: str, patch_id: str, *, apply_run_id: str | None = None, approval_id: str | None = None, affected_path: str | None = None, validation_code: str | None = None, message: object = "") -> dict[str, object]:
+        diagnostic = self._diagnostic(
+            phase,
+            status,
+            patch_id,
+            apply_run_id=apply_run_id,
+            approval_id=approval_id,
+            affected_path=affected_path,
+            validation_code=validation_code,
+            message=message,
+        )
+        return {"ok": False, "status": status, "patch_id": patch_id, **({"apply_run_id": apply_run_id} if apply_run_id else {}), "error": diagnostic["message"], "diagnostic": diagnostic}

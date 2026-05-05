@@ -98,7 +98,13 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
     conversation_summary_ingestor = ConversationSummaryIngestor()
     candidate_analysis = CandidateAnalysisService()
     patch_generation = PatchGenerationService(repo.queue_db, config.state_dir / "patch_artifacts", allowed_roots=config.allowed_roots)
-    patch_apply = PatchApplyService(repo.queue_db, config.state_dir / "rollback", allowed_roots=config.allowed_roots)
+    patch_apply = PatchApplyService(
+        repo.queue_db,
+        config.state_dir / "rollback",
+        allowed_roots=config.allowed_roots,
+        memory_service=memory_service,
+        conversation_summary_ingestor=conversation_summary_ingestor,
+    )
     active_partition_watcher = None
     if config.enable_lmstudio_watcher:
         active_partition_watcher = ActivePartitionWatcher(

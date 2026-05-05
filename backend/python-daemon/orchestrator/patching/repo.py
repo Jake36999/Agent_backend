@@ -55,6 +55,32 @@ class PatchArtifactRepository:
             validation_error=row["validation_error"],
         )
 
+    def list_artifacts(self, limit: int = 50) -> list[PatchArtifact]:
+        with closing(self._connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM patch_artifacts ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(int(limit), 200)),),
+            ).fetchall()
+        return [self._artifact_from_row(row) for row in rows]
+
+    def _artifact_from_row(self, row: sqlite3.Row) -> PatchArtifact:
+        return PatchArtifact(
+            patch_id=row["patch_id"],
+            run_id=row["run_id"],
+            project_id=row["project_id"],
+            project_scope_hash=row["project_scope_hash"],
+            selected_skill_id=row["selected_skill_id"],
+            target_repo=row["target_repo"],
+            status=row["status"],
+            patch_path=row["patch_path"],
+            diff_sha256=row["diff_sha256"],
+            affected_paths_json=json.loads(row["affected_paths_json"]),
+            created_at=row["created_at"],
+            validation_status=row["validation_status"],
+            validation_error=row["validation_error"],
+        )
+
     def insert_approval_record(self, record: dict[str, Any] | ApprovalRecord) -> None:
         if isinstance(record, ApprovalRecord):
             payload = {
@@ -109,6 +135,33 @@ class PatchArtifactRepository:
             row = conn.execute("SELECT * FROM approval_records WHERE approval_id = ?", (approval_id,)).fetchone()
         if row is None:
             return None
+        return ApprovalRecord(
+            approval_id=row["approval_id"],
+            patch_id=row["patch_id"],
+            run_id=row["run_id"],
+            project_id=row["project_id"],
+            project_scope_hash=row["project_scope_hash"],
+            target_repo=row["target_repo"],
+            approved=bool(row["approved"]),
+            approved_by=row["approved_by"],
+            approved_at=row["approved_at"],
+            approval_scope=row["approval_scope"],
+            approved_diff_sha256=row["approved_diff_sha256"],
+            declared_tests_json=json.loads(row["declared_tests_json"] or "[]"),
+            created_at=row["created_at"],
+            notes=row["notes"],
+        )
+
+    def list_approval_records(self, limit: int = 50) -> list[ApprovalRecord]:
+        with closing(self._connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM approval_records ORDER BY created_at DESC LIMIT ?",
+                (max(1, min(int(limit), 200)),),
+            ).fetchall()
+        return [self._approval_from_row(row) for row in rows]
+
+    def _approval_from_row(self, row: sqlite3.Row) -> ApprovalRecord:
         return ApprovalRecord(
             approval_id=row["approval_id"],
             patch_id=row["patch_id"],
@@ -182,6 +235,41 @@ class PatchArtifactRepository:
             row = conn.execute("SELECT * FROM patch_apply_runs WHERE apply_run_id = ?", (apply_run_id,)).fetchone()
         if row is None:
             return None
+        return PatchApplyRun(
+            apply_run_id=row["apply_run_id"],
+            patch_id=row["patch_id"],
+            approval_id=row["approval_id"],
+            run_id=row["run_id"],
+            project_id=row["project_id"],
+            project_scope_hash=row["project_scope_hash"],
+            target_repo=row["target_repo"],
+            status=row["status"],
+            applied_at=row["applied_at"],
+            completed_at=row["completed_at"],
+            rollback_available=bool(row["rollback_available"]),
+            tests_status=row["tests_status"],
+            bounded_error=row["bounded_error"],
+        )
+
+    def list_apply_runs(self, limit: int = 50) -> list[PatchApplyRun]:
+        with closing(self._connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM patch_apply_runs ORDER BY COALESCE(completed_at, applied_at, '') DESC LIMIT ?",
+                (max(1, min(int(limit), 200)),),
+            ).fetchall()
+        return [self._apply_run_from_row(row) for row in rows]
+
+    def list_apply_runs_for_patch(self, patch_id: str, limit: int = 20) -> list[PatchApplyRun]:
+        with closing(self._connect()) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM patch_apply_runs WHERE patch_id = ? ORDER BY COALESCE(completed_at, applied_at, '') DESC LIMIT ?",
+                (patch_id, max(1, min(int(limit), 100))),
+            ).fetchall()
+        return [self._apply_run_from_row(row) for row in rows]
+
+    def _apply_run_from_row(self, row: sqlite3.Row) -> PatchApplyRun:
         return PatchApplyRun(
             apply_run_id=row["apply_run_id"],
             patch_id=row["patch_id"],
