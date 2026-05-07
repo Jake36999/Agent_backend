@@ -419,6 +419,35 @@ CREATE TABLE IF NOT EXISTS dead_letters (
 """
 
 
+QUEUE_MIGRATION_0008 = """
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS capability_manifests (
+  capability_id TEXT PRIMARY KEY,
+  capability_type TEXT NOT NULL,
+  version TEXT NOT NULL,
+  risk_tier TEXT NOT NULL CHECK (risk_tier IN ('T1', 'T2', 'T3', 'T4', 'T5')),
+  requires_approval INTEGER NOT NULL DEFAULT 0,
+  network_access INTEGER NOT NULL DEFAULT 0,
+  writes_external_state INTEGER NOT NULL DEFAULT 0,
+  manifest_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('verified', 'quarantined', 'disabled')),
+  source_path TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX IF NOT EXISTS idx_capability_manifests_type
+ON capability_manifests(capability_type);
+
+CREATE INDEX IF NOT EXISTS idx_capability_manifests_status
+ON capability_manifests(status);
+"""
+
+
 QUEUE_MIGRATIONS = (
     ("0001_initial", QUEUE_MIGRATION_0001),
     ("0002_active_partition_memory", QUEUE_MIGRATION_0002),
@@ -427,6 +456,7 @@ QUEUE_MIGRATIONS = (
     ("0005_snapshot_patch_records", QUEUE_MIGRATION_0005),
     ("0006_patch_artifacts", QUEUE_MIGRATION_0006),
     ("0007_patch_apply_approvals", QUEUE_MIGRATION_0007),
+    ("0008_capability_registry", QUEUE_MIGRATION_0008),
 )
 CONTROL_MIGRATIONS = (("0001_initial", CONTROL_MIGRATION_0001),)
 

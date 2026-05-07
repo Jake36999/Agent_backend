@@ -8,6 +8,8 @@ from .bridge_client import TcpBridgeClient
 from .runner import WorkflowRunner
 from .state import default_state_dir
 from orchestrator.active_partition.service import ActivePartitionService
+from orchestrator.pipeline.compiler import PipelineCompiler
+from orchestrator.pipeline.loader import PipelineLoader
 from orchestrator.candidate_analysis.service import CandidateAnalysisService
 from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
 from orchestrator.memory.service import MemoryService
@@ -210,6 +212,10 @@ def run_agent_workflow(
     candidate_analysis: CandidateAnalysisService | None = None,
     patch_apply: PatchApplyService | None = None,
     patch_apply_request: dict[str, str] | None = None,
+    pipeline_id: str | None = None,
+    pipeline_vars: dict[str, str] | None = None,
+    pipeline_compiler: PipelineCompiler | None = None,
+    pipeline_loader: PipelineLoader | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -232,6 +238,9 @@ def run_agent_workflow(
         skill_registry_root=skill_registry_root,
     )
 
+    pipeline_compiler_inst = pipeline_compiler if pipeline_id else None
+    pipeline_loader_inst = pipeline_loader if pipeline_id else None
+
     runner = WorkflowRunner(
         bridge_client=bridge_client,
         tool_client=tool_client,
@@ -245,6 +254,8 @@ def run_agent_workflow(
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
         patch_apply=patch_apply,
+        pipeline_compiler=pipeline_compiler_inst,
+        pipeline_loader=pipeline_loader_inst,
     )
     try:
         _, response = runner.run(
@@ -261,6 +272,8 @@ def run_agent_workflow(
             verified_skill_count=verified_skill_count,
             selector_candidate_scores=selector_candidate_scores,
             patch_apply_request=patch_apply_request,
+            pipeline_id=pipeline_id,
+            pipeline_vars=pipeline_vars,
         )
         return response
     except Exception as exc:

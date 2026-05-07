@@ -11,6 +11,8 @@ from orchestrator.memory.conversation_summary import ConversationSummaryIngestor
 from orchestrator.memory.service import MemoryService
 from orchestrator.memory.snapshots import SnapshotMemoryService
 from orchestrator.patching.apply import PatchApplyService
+from orchestrator.pipeline.compiler import PipelineCompiler
+from orchestrator.pipeline.loader import PipelineLoader
 
 from .bridge_client import TcpBridgeClient
 from .compaction import compact_tool_result
@@ -35,6 +37,8 @@ class WorkflowRunner:
         conversation_summary_ingestor: ConversationSummaryIngestor | None = None,
         candidate_analysis: CandidateAnalysisService | None = None,
         patch_apply: PatchApplyService | None = None,
+        pipeline_compiler: PipelineCompiler | None = None,
+        pipeline_loader: PipelineLoader | None = None,
     ) -> None:
         self.lm_client = lm_client
         self.bridge_client = bridge_client
@@ -49,6 +53,8 @@ class WorkflowRunner:
         self.conversation_summary_ingestor = conversation_summary_ingestor
         self.candidate_analysis = candidate_analysis
         self.patch_apply = patch_apply
+        self.pipeline_compiler = pipeline_compiler
+        self.pipeline_loader = pipeline_loader
 
     def run(
         self,
@@ -66,6 +72,8 @@ class WorkflowRunner:
         verified_skill_count: int = 0,
         selector_candidate_scores: list[dict[str, Any]] | None = None,
         patch_apply_request: dict[str, str] | None = None,
+        pipeline_id: str | None = None,
+        pipeline_vars: dict[str, str] | None = None,
     ) -> tuple[WorkflowState, dict[str, Any]]:
         state = WorkflowState(
             run_id=str(uuid.uuid4()),
@@ -84,7 +92,10 @@ class WorkflowRunner:
         if patch_apply_request is not None:
             return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
-        plan = self._build_plan(objective, target_repo, profile)
+        plan = self._build_plan(objective, target_repo, profile, pipeline_id=pipeline_id, pipeline_vars=pipeline_vars)
+        if pipeline_id is not None:
+            state.artifacts["pipeline_id"] = pipeline_id
+            state.artifacts["compiled_step_count"] = len(plan)
         if len(plan) > self.max_steps:
             state.phase = "FINAL"
             state.final_summary = "Workflow blocked: plan exceeds the configured maximum step count."
@@ -195,7 +206,24 @@ class WorkflowRunner:
         state_path = state.save(self.state_dir)
         return state, self._final_response(state, state_path, ok=bool(result.get("ok")), status=str(result.get("status", "ERROR")))
 
-    def _build_plan(self, objective: str, target_repo: str, profile: str) -> list[dict[str, Any]]:
+    def _build_plan(
+        self,
+        objective: str,
+        target_repo: str,
+        profile: str,
+        pipeline_id: str | None = None,
+        pipeline_vars: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        if pipeline_id is not None and self.pipeline_compiler is not None and self.pipeline_loader is not None:
+            definition = self.pipeline_loader.load(pipeline_id)
+            runtime_vars = {
+                "objective": objective,
+                "target_repo": target_repo,
+                "profile": profile,
+                **(pipeline_vars or {}),
+            }
+            return self.pipeline_compiler.compile_to_plan_list(definition, runtime_vars)
+
         return [
             {
                 "id": "start_investigation",

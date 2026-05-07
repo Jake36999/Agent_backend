@@ -1,0 +1,30 @@
+pipeline_id: deep_research
+version: "1.0.0"
+name: "Deep Research Workflow"
+description: "Breadth-depth recursive research pipeline that returns compact evidence with citations."
+max_steps: 10
+variables:
+  max_sources: "20"
+  max_depth: "3"
+
+steps:
+  - step_id: start_research
+    tool_name: mcp_deep_research
+    description: "Execute deep research query with citation tracking"
+    args:
+      query: "${objective}"
+      project_scope_hash: "${project_scope_hash}"
+      max_sources: "${max_sources}"
+      max_depth: "${max_depth}"
+
+  - step_id: commit_findings
+    tool_name: mcp_commit_memory
+    description: "Commit research findings as a summary memory record"
+    depends_on: [start_research]
+    args:
+      category: "summary"
+      content: "${research_summary}"
+      confidence_score: 0.8
+      metadata:
+        source: "deep_research"
+        query: "${objective}"

@@ -12,11 +12,15 @@ from .active_partition.service import ActivePartitionService, ActivePartitionSer
 from .agent_workflow.bridge_client import InProcessToolClient
 from .agent_workflow.mcp_tool import run_agent_workflow
 from .candidate_analysis.service import CandidateAnalysisService
+from .capabilities.registry import CapabilityRegistry
+from .code_intelligence.analyzer import CodeIntelligenceAnalyzer
 from .memory.conversation_summary import ConversationSummaryIngestor
 from .memory.service import MemoryService
 from .memory.snapshots import SnapshotMemoryService
 from .patching.service import PatchGenerationService
 from .patching.apply import PatchApplyService
+from .pipeline.compiler import PipelineCompiler
+from .pipeline.loader import PipelineLoader
 from .tool_assist_adapter import ToolAssistAdapter
 
 import yaml
@@ -24,6 +28,12 @@ import yaml
 
 class AdapterFailure(ValueError):
     pass
+
+
+def _to_public_capability_dict(manifest: Any) -> dict[str, Any]:
+    data = manifest.to_dict()
+    data.pop("source_path", None)
+    return data
 
 
 class SemanticMemoryAdapter(Protocol):
@@ -202,6 +212,10 @@ class ToolAdapters:
         allowed_roots: tuple[Path, ...] | None = None,
         skill_registry_root: Path | None = None,
         queue_db_path: Path | None = None,
+        pipeline_compiler: PipelineCompiler | None = None,
+        pipeline_loader: PipelineLoader | None = None,
+        capability_registry: CapabilityRegistry | None = None,
+        code_intelligence: CodeIntelligenceAnalyzer | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -216,6 +230,10 @@ class ToolAdapters:
         self.candidate_analysis = candidate_analysis
         self.patch_generation = patch_generation
         self.patch_apply = patch_apply
+        self.pipeline_compiler = pipeline_compiler
+        self.pipeline_loader = pipeline_loader
+        self.capability_registry = capability_registry
+        self.code_intelligence = code_intelligence
         self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
         self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
         if queue_db_path is not None:
@@ -355,6 +373,10 @@ class ToolAdapters:
                         "artifacts": {},
                         "error": {"code": "missing_workflow_input", "message": "objective and target_repo are required."},
                     }
+                pipeline_id = str(args.get("pipeline_id", "")) or None
+                pipeline_vars = args.get("pipeline_vars")
+                if pipeline_vars is not None and not isinstance(pipeline_vars, dict):
+                    raise AdapterFailure("pipeline_vars must be an object")
                 return run_agent_workflow(
                     objective=objective,
                     target_repo=target_repo,
@@ -371,6 +393,10 @@ class ToolAdapters:
                     snapshot_memory=self.snapshot_memory,
                     conversation_summary_ingestor=self.conversation_summary_ingestor,
                     candidate_analysis=self.candidate_analysis,
+                    pipeline_id=pipeline_id,
+                    pipeline_vars=dict(pipeline_vars or {}),
+                    pipeline_compiler=self.pipeline_compiler,
+                    pipeline_loader=self.pipeline_loader,
                 )
             if tool_name == "mcp_ingest_target":
                 if self.semantic_memory is None:
@@ -449,6 +475,32 @@ class ToolAdapters:
                         args.get("region"),
                     ),
                 }
+            if tool_name == "mcp_list_capabilities":
+                if self.capability_registry is None:
+                    raise AdapterFailure("capability registry is not configured")
+                cap_type = args.get("capability_type")
+                status = args.get("status")
+                from .capabilities.models import CapabilityType as CT
+                ct = CT(cap_type) if cap_type else None
+                manifests = self.capability_registry.list_all(capability_type=ct, status=status)
+                return {
+                    "ok": True,
+                    "status": "OK",
+                    "summary": f"Found {len(manifests)} capabilities.",
+                    "capabilities": [_to_public_capability_dict(m) for m in manifests],
+                    "artifacts": {},
+                }
+            if tool_name == "mcp_code_intelligence":
+                if self.code_intelligence is None:
+                    raise AdapterFailure("code intelligence analyzer is not configured")
+                return self.code_intelligence.analyze(
+                    str(args["target_repo"]),
+                    str(args["mode"]),
+                    max_files=int(args.get("max_files", 500)),
+                    max_edges=int(args.get("max_edges", 500)),
+                    max_chars=int(args.get("max_chars", 8000)),
+                    focus_paths=list(args["focus_paths"]) if args.get("focus_paths") else None,
+                )
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:
             raise AdapterFailure(f"missing required argument: {exc}") from exc

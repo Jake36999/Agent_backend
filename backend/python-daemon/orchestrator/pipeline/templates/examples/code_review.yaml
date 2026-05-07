@@ -1,0 +1,41 @@
+pipeline_id: code_review
+version: "1.0.0"
+name: "Code Review Workflow"
+description: "Code analysis pipeline: scout workspace, generate code intelligence, then review."
+max_steps: 10
+variables:
+  profile: "safe"
+
+steps:
+  - step_id: scout
+    tool_name: mcp_scout_workspace
+    description: "Scout the target workspace for file inventory"
+    args:
+      project_id: "${project_id}"
+      absolute_path: "${target_repo}"
+      max_files: 500
+      include_summaries: true
+
+  - step_id: analyze
+    tool_name: mcp_code_intelligence
+    description: "Generate code map and dependency graph"
+    depends_on: [scout]
+    args:
+      target_repo: "${target_repo}"
+      mode: "code_map"
+
+  - step_id: dependency_graph
+    tool_name: mcp_code_intelligence
+    description: "Generate dependency graph for architecture review"
+    depends_on: [scout]
+    args:
+      target_repo: "${target_repo}"
+      mode: "dependency_graph"
+
+  - step_id: review_context
+    tool_name: mcp_code_intelligence
+    description: "Build bounded repo context summary"
+    depends_on: [analyze, dependency_graph]
+    args:
+      target_repo: "${target_repo}"
+      mode: "repo_context"

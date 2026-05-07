@@ -62,6 +62,8 @@ export const CONTRACTS = [
         allow_ingest: { type: "boolean", default: false },
         include_report_preview: { type: "boolean", default: false },
         use_model_phases: { type: "boolean", default: false },
+        pipeline_id: { type: "string", pattern: "^[a-z][a-z0-9_]*$", maxLength: 64 },
+        pipeline_vars: { type: "object", maxProperties: 20, additionalProperties: { type: "string", maxLength: 2000 } },
       },
       required: ["objective", "target_repo"],
     },
@@ -273,6 +275,45 @@ export const CONTRACTS = [
       required: ["absolute_path", "expected_sha256", "expected_metadata_hash"],
     },
   },
+  {
+    name: "mcp_code_intelligence",
+    description: "Analyze a repository for code maps, dependency graphs, repo context summaries, or Mermaid diagrams.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        target_repo: { type: "string", minLength: 1 },
+        mode: { type: "string", enum: ["code_map", "dependency_graph", "repo_context", "mermaid"] },
+        max_files: { type: "integer", minimum: 1, maximum: 2000 },
+        max_edges: { type: "integer", minimum: 1, maximum: 2000 },
+        max_chars: { type: "integer", minimum: 100, maximum: 12000 },
+        focus_paths: { type: "array", items: { type: "string", minLength: 1 } },
+      },
+      required: ["target_repo", "mode"],
+    },
+  },
+  {
+    name: "mcp_list_capabilities",
+    description: "List registered capabilities from the unified capability registry.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        capability_type: {
+          type: "string",
+          enum: ["adapter", "sandbox_provider", "indexer", "pipeline_template", "integration_provider"],
+        },
+        status: {
+          type: "string",
+          enum: ["verified", "quarantined", "disabled"],
+        },
+      },
+    },
+  },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
 export function findContract(name) {
@@ -313,10 +354,19 @@ function validateObject(schema, value, path) {
         details.push({ path: joinPath(path, required), keyword: "required", message: `${required} is required` });
       }
     }
+    if (schema.maxProperties !== undefined && Object.keys(value).length > schema.maxProperties) {
+      details.push({ path, keyword: "maxProperties", message: `object has more than ${schema.maxProperties} properties` });
+    }
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
         if (!Object.hasOwn(properties, key)) {
           details.push({ path: joinPath(path, key), keyword: "additionalProperties", message: `${key} is not allowed` });
+        }
+      }
+    } else if (schema.additionalProperties !== undefined && typeof schema.additionalProperties === "object") {
+      for (const [key, val] of Object.entries(value)) {
+        if (!Object.hasOwn(properties, key)) {
+          details.push(...validateValue(schema.additionalProperties, val, joinPath(path, key)));
         }
       }
     }

@@ -1,0 +1,70 @@
+# Source repositories reviewed for v0.2.0 upgrade planning
+# Classifications:
+#   mimic_pattern      - adopt design patterns only
+#   harvest_component  - extract reusable components
+#   direct_integration - integrate via API/SDK
+
+sources:
+  - name: UltraRAG
+    classification: mimic_pattern
+    notes: YAML pipeline orchestration
+
+  - name: DeerFlow
+    classification: mimic_pattern
+    notes: sub-agent harness, progressive skill loading
+
+  - name: deep-research
+    classification: mimic_pattern
+    notes: breadth/depth recursive search
+
+  - name: code2llm
+    classification: harvest_component
+    notes: code map, context, call graph outputs
+
+  - name: CocoIndex
+    classification: harvest_component
+    notes: incremental indexing, source lineage
+
+  - name: Composio
+    classification: direct_integration
+    notes: external app connectors
+
+  - name: E2B Fragments
+    classification: direct_integration
+    notes: sandbox SDK
+
+  - name: agent-os
+    classification: harvest_component
+    notes: V8/WASM isolation concepts
+
+  - name: context-mode
+    classification: mimic_pattern
+    notes: context bundle switching
+
+  - name: agency-agents
+    classification: direct_integration
+    notes: persona/prompt library
+
+  - name: open-webui-plugins
+    classification: harvest_component
+    notes: backend-safe tool wrappers
+
+  - name: life-graph
+    classification: mimic_pattern
+    notes: graph visualization
+
+  - name: background-agents
+    classification: harvest_component
+    notes: queue/status patterns
+
+  - name: llm-wiki
+    classification: direct_integration
+    notes: knowledge-pack generation
+
+  - name: CodeSandbox
+    classification: mimic_pattern
+    notes: collaborative sandbox UX concepts only
+
+  - name: deep-swarm-research-plugin
+    classification: mimic_pattern
+    notes: supervisor-worker research
