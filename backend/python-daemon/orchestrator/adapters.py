@@ -12,11 +12,14 @@ from .active_partition.service import ActivePartitionService, ActivePartitionSer
 from .agent_workflow.bridge_client import InProcessToolClient
 from .agent_workflow.mcp_tool import run_agent_workflow
 from .candidate_analysis.service import CandidateAnalysisService
+from .capabilities.registry import CapabilityRegistry
 from .memory.conversation_summary import ConversationSummaryIngestor
 from .memory.service import MemoryService
 from .memory.snapshots import SnapshotMemoryService
 from .patching.service import PatchGenerationService
 from .patching.apply import PatchApplyService
+from .pipeline.compiler import PipelineCompiler
+from .pipeline.loader import PipelineLoader
 from .tool_assist_adapter import ToolAssistAdapter
 
 import yaml
@@ -202,6 +205,9 @@ class ToolAdapters:
         allowed_roots: tuple[Path, ...] | None = None,
         skill_registry_root: Path | None = None,
         queue_db_path: Path | None = None,
+        pipeline_compiler: PipelineCompiler | None = None,
+        pipeline_loader: PipelineLoader | None = None,
+        capability_registry: CapabilityRegistry | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -216,6 +222,9 @@ class ToolAdapters:
         self.candidate_analysis = candidate_analysis
         self.patch_generation = patch_generation
         self.patch_apply = patch_apply
+        self.pipeline_compiler = pipeline_compiler
+        self.pipeline_loader = pipeline_loader
+        self.capability_registry = capability_registry
         self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
         self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
         if queue_db_path is not None:
@@ -448,6 +457,50 @@ class ToolAdapters:
                         args.get("page"),
                         args.get("region"),
                     ),
+                }
+            if tool_name == "mcp_pipeline_run":
+                if self.pipeline_compiler is None or self.pipeline_loader is None:
+                    raise AdapterFailure("pipeline compiler is not configured")
+                pipeline_id = str(args["pipeline_id"])
+                target_repo = str(args["target_repo"])
+                objective = str(args.get("objective", ""))
+                profile = str(args.get("profile", "safe"))
+                pipeline_vars = args.get("pipeline_vars")
+                if pipeline_vars is not None and not isinstance(pipeline_vars, dict):
+                    raise AdapterFailure("pipeline_vars must be an object")
+                return run_agent_workflow(
+                    objective=objective,
+                    target_repo=target_repo,
+                    profile=profile,
+                    allow_ingest=bool(args.get("allow_ingest", False)),
+                    include_report_preview=bool(args.get("include_report_preview", False)),
+                    use_model_phases=False,
+                    allowed_roots=self.allowed_roots if self.allowed_roots else None,
+                    skill_registry_root=self.skill_registry_root,
+                    queue_db_path=self.queue_db_path,
+                    tool_client=self._workflow_tool_client(),
+                    active_partition=self.active_partition,
+                    memory_service=self.memory_service,
+                    snapshot_memory=self.snapshot_memory,
+                    conversation_summary_ingestor=self.conversation_summary_ingestor,
+                    candidate_analysis=self.candidate_analysis,
+                    pipeline_id=pipeline_id,
+                    pipeline_vars=dict(pipeline_vars or {}),
+                )
+            if tool_name == "mcp_list_capabilities":
+                if self.capability_registry is None:
+                    raise AdapterFailure("capability registry is not configured")
+                cap_type = args.get("capability_type")
+                status = args.get("status")
+                from .capabilities.models import CapabilityType as CT
+                ct = CT(cap_type) if cap_type else None
+                manifests = self.capability_registry.list_all(capability_type=ct, status=status)
+                return {
+                    "ok": True,
+                    "status": "OK",
+                    "summary": f"Found {len(manifests)} capabilities.",
+                    "capabilities": [m.to_dict() for m in manifests],
+                    "artifacts": {},
                 }
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:

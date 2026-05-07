@@ -8,6 +8,7 @@ from .active_partition.service import ActivePartitionService
 from .active_partition.watcher import ActivePartitionWatcher
 from .bridge_server import BridgeSecurity
 from .candidate_analysis.service import CandidateAnalysisService
+from .capabilities.registry import CapabilityRegistry
 from .chroma_manager import ChromaConfig, ChromaManager
 from .config import RuntimeConfig
 from .memory.conversation_summary import ConversationSummaryIngestor
@@ -16,6 +17,8 @@ from .memory.service import MemoryService
 from .memory.snapshots import SnapshotMemoryService
 from .patching.service import PatchGenerationService
 from .patching.apply import PatchApplyService
+from .pipeline.compiler import PipelineCompiler
+from .pipeline.loader import PipelineLoader
 from .tool_assist_adapter import ToolAssistAdapter
 from .db_bootstrap import bootstrap_databases
 from .execution_loop import ExecutionLoop
@@ -42,6 +45,9 @@ class RuntimeComponents:
     candidate_analysis: CandidateAnalysisService | None = None
     patch_generation: PatchGenerationService | None = None
     patch_apply: PatchApplyService | None = None
+    pipeline_compiler: PipelineCompiler | None = None
+    pipeline_loader: PipelineLoader | None = None
+    capability_registry: CapabilityRegistry | None = None
 
     def health(self) -> dict[str, object]:
         return {
@@ -120,6 +126,9 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
     ocr_provider = CommandOCRProvider(shell_adapter=shell_adapter, command=config.ocr_command) if config.ocr_command else None
     pdf_processor = PdfProcessorAdapter(ocr_provider=ocr_provider)
     ingest = IngestTargetService(repo, chroma, allowed_roots=config.allowed_roots, pdf_processor=pdf_processor)
+    pipeline_compiler = PipelineCompiler()
+    pipeline_loader = PipelineLoader()
+    capability_registry = CapabilityRegistry(repo.queue_db)
     tool_adapters = ToolAdapters(
         semantic_memory=ingest,
         file_tools=file_tools,
@@ -137,6 +146,9 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         allowed_roots=config.allowed_roots,
         skill_registry_root=config.skill_registry_root,
         queue_db_path=repo.queue_db,
+        pipeline_compiler=pipeline_compiler,
+        pipeline_loader=pipeline_loader,
+        capability_registry=capability_registry,
     )
     return RuntimeComponents(
         config=config,
@@ -152,4 +164,7 @@ def build_runtime(config: RuntimeConfig) -> RuntimeComponents:
         candidate_analysis=candidate_analysis,
         patch_generation=patch_generation,
         patch_apply=patch_apply,
+        pipeline_compiler=pipeline_compiler,
+        pipeline_loader=pipeline_loader,
+        capability_registry=capability_registry,
     )

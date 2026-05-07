@@ -273,6 +273,46 @@ export const CONTRACTS = [
       required: ["absolute_path", "expected_sha256", "expected_metadata_hash"],
     },
   },
+  {
+    name: "mcp_pipeline_run",
+    description: "Run a declarative YAML pipeline workflow by pipeline_id.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        pipeline_id: { type: "string", minLength: 1 },
+        target_repo: { type: "string", minLength: 1 },
+        objective: { type: "string", minLength: 1 },
+        profile: { type: "string", enum: ["safe"], default: "safe" },
+        allow_ingest: { type: "boolean", default: false },
+        include_report_preview: { type: "boolean", default: false },
+        pipeline_vars: { type: "object", additionalProperties: { type: "string" } },
+      },
+      required: ["pipeline_id", "target_repo"],
+    },
+  },
+  {
+    name: "mcp_list_capabilities",
+    description: "List registered capabilities from the unified capability registry.",
+    strict: true,
+    inputSchema: {
+      $schema: DRAFT7,
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        capability_type: {
+          type: "string",
+          enum: ["adapter", "sandbox_provider", "indexer", "pipeline_template", "integration_provider"],
+        },
+        status: {
+          type: "string",
+          enum: ["verified", "quarantined", "disabled"],
+        },
+      },
+    },
+  },
 ].sort((a, b) => a.name.localeCompare(b.name));
 
 export function findContract(name) {

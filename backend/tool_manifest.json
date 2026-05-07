@@ -388,6 +388,58 @@
       "requires_active_partition": false,
       "requires_allowed_root": true,
       "version": "0.1.0"
+    },
+    {
+      "tool_id": "mcp_pipeline_run",
+      "display_name": "Run pipeline",
+      "description": "Run a declarative YAML pipeline workflow by pipeline_id.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "pipeline_id": { "type": "string", "minLength": 1 },
+          "target_repo": { "type": "string", "minLength": 1 },
+          "objective": { "type": "string", "minLength": 1 },
+          "profile": { "type": "string", "enum": ["safe"], "default": "safe" },
+          "allow_ingest": { "type": "boolean", "default": false },
+          "include_report_preview": { "type": "boolean", "default": false },
+          "pipeline_vars": { "type": "object", "additionalProperties": { "type": "string" } }
+        },
+        "required": ["pipeline_id", "target_repo"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "version": "0.2.0"
+    },
+    {
+      "tool_id": "mcp_list_capabilities",
+      "display_name": "List capabilities",
+      "description": "List registered capabilities from the unified capability registry.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "capability_type": {
+            "type": "string",
+            "enum": ["adapter", "sandbox_provider", "indexer", "pipeline_template", "integration_provider"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["verified", "quarantined", "disabled"]
+          }
+        }
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["node-mcp", "fastmcp", "python-daemon"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "version": "0.2.0"
     }
   ]
 }

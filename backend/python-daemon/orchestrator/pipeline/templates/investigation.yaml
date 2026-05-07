@@ -1,0 +1,47 @@
+pipeline_id: investigation
+version: "1.0.0"
+name: "Investigation Workflow"
+description: "Deterministic investigation pipeline matching the original hardcoded WorkflowRunner plan."
+max_steps: 8
+variables:
+  profile: "safe"
+
+steps:
+  - step_id: start_investigation
+    tool_name: mcp_investigation_start
+    description: "Create a Tool Assist session"
+    args:
+      objective: "${objective}"
+      target_repo: "${target_repo}"
+      profile: "${profile}"
+
+  - step_id: filemap
+    tool_name: mcp_investigation_filemap
+    description: "Build the file map for the investigation session"
+    depends_on: [start_investigation]
+    args:
+      session_path: "${session_path}"
+      profile: "${profile}"
+
+  - step_id: validate_manifest
+    tool_name: mcp_investigation_validate_manifest
+    description: "Validate the manifest output"
+    depends_on: [filemap]
+    args:
+      session_path: "${session_path}"
+
+  - step_id: read_report
+    tool_name: mcp_investigation_read_report
+    description: "Read a bounded report preview"
+    depends_on: [validate_manifest]
+    args:
+      session_path: "${session_path}"
+      artifact_key: "manifest_doctor_md"
+      max_chars: 2000
+
+  - step_id: compile_handoff
+    tool_name: mcp_investigation_compile_handoff
+    description: "Compile the handoff metadata"
+    depends_on: [read_report]
+    args:
+      session_path: "${session_path}"
