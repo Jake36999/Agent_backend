@@ -124,6 +124,27 @@ INTENT_HINTS: dict[str, set[str]] = {
         "secret",
         "deploy",
     },
+    "code_intelligence_v1": {
+        "code",
+        "map",
+        "inventory",
+        "repo",
+        "context",
+        "structure",
+        "files",
+        "codebase",
+        "summarize",
+    },
+    "dependency_graph_v1": {
+        "dependency",
+        "dependencies",
+        "graph",
+        "imports",
+        "circular",
+        "mermaid",
+        "topology",
+        "modules",
+    },
 }
 
 
