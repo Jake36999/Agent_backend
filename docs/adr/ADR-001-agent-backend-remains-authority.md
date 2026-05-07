@@ -1,4 +1,4 @@
-# ADR-001: Agent_backend remains the runtime authority
+# ADR-001: Agent backend remains the runtime authority
 
 **Status:** Accepted
 **Date:** 2026-05-06
