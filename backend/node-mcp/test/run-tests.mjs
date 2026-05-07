@@ -5,3 +5,4 @@ import "./bridge-integration.test.mjs";
 import "./investigation-contracts.test.mjs";
 import "./active-memory-contracts.test.mjs";
 import "./tool-manifest.test.mjs";
+import "./pipeline-contract.test.mjs";

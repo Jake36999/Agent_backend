@@ -14,7 +14,9 @@
           "profile": { "type": "string", "enum": ["safe"], "default": "safe" },
           "allow_ingest": { "type": "boolean", "default": false },
           "include_report_preview": { "type": "boolean", "default": false },
-          "use_model_phases": { "type": "boolean", "default": false }
+          "use_model_phases": { "type": "boolean", "default": false },
+          "pipeline_id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 64 },
+          "pipeline_vars": { "type": "object", "maxProperties": 20, "additionalProperties": { "type": "string", "maxLength": 2000 } }
         },
         "required": ["objective", "target_repo"]
       },
@@ -390,22 +392,21 @@
       "version": "0.1.0"
     },
     {
-      "tool_id": "mcp_pipeline_run",
-      "display_name": "Run pipeline",
-      "description": "Run a declarative YAML pipeline workflow by pipeline_id.",
+      "tool_id": "mcp_code_intelligence",
+      "display_name": "Code intelligence",
+      "description": "Analyze a repository for code maps, dependency graphs, repo context summaries, or Mermaid diagrams.",
       "input_schema": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "pipeline_id": { "type": "string", "minLength": 1 },
           "target_repo": { "type": "string", "minLength": 1 },
-          "objective": { "type": "string", "minLength": 1 },
-          "profile": { "type": "string", "enum": ["safe"], "default": "safe" },
-          "allow_ingest": { "type": "boolean", "default": false },
-          "include_report_preview": { "type": "boolean", "default": false },
-          "pipeline_vars": { "type": "object", "additionalProperties": { "type": "string" } }
+          "mode": { "type": "string", "enum": ["code_map", "dependency_graph", "repo_context", "mermaid"] },
+          "max_files": { "type": "integer", "minimum": 1, "maximum": 2000 },
+          "max_edges": { "type": "integer", "minimum": 1, "maximum": 2000 },
+          "max_chars": { "type": "integer", "minimum": 100, "maximum": 12000 },
+          "focus_paths": { "type": "array", "items": { "type": "string", "minLength": 1 } }
         },
-        "required": ["pipeline_id", "target_repo"]
+        "required": ["target_repo", "mode"]
       },
       "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
       "surfaces": ["node-mcp", "fastmcp", "python-daemon"],

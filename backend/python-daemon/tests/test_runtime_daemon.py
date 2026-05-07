@@ -208,8 +208,7 @@ class RuntimeDaemonTests(unittest.TestCase):
                         "0005_snapshot_patch_records",
                         "0006_patch_artifacts",
                         "0007_patch_apply_approvals",
-                        "0008_pipeline_definitions",
-                        "0009_capability_registry",
+                        "0008_capability_registry",
                     ],
                 )
                 tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
@@ -218,8 +217,8 @@ class RuntimeDaemonTests(unittest.TestCase):
                 self.assertIn("approval_records", tables)
                 self.assertIn("file_snapshots", tables)
                 self.assertIn("patch_apply_runs", tables)
-                self.assertIn("pipeline_definitions", tables)
-                self.assertIn("pipeline_runs", tables)
+                self.assertNotIn("pipeline_definitions", tables)
+                self.assertNotIn("pipeline_runs", tables)
                 self.assertIn("capability_manifests", tables)
                 conn.execute(
                     "INSERT INTO schema_migrations(version, applied_at) VALUES ('9999_future', 'now')"

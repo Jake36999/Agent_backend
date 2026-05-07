@@ -93,6 +93,9 @@ class WorkflowRunner:
             return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
         plan = self._build_plan(objective, target_repo, profile, pipeline_id=pipeline_id, pipeline_vars=pipeline_vars)
+        if pipeline_id is not None:
+            state.artifacts["pipeline_id"] = pipeline_id
+            state.artifacts["compiled_step_count"] = len(plan)
         if len(plan) > self.max_steps:
             state.phase = "FINAL"
             state.final_summary = "Workflow blocked: plan exceeds the configured maximum step count."

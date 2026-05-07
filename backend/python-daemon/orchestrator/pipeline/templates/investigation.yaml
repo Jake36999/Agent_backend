@@ -5,6 +5,7 @@ description: "Deterministic investigation pipeline matching the original hardcod
 max_steps: 8
 variables:
   profile: "safe"
+  max_chars: "2000"
 
 steps:
   - step_id: start_investigation
@@ -37,7 +38,7 @@ steps:
     args:
       session_path: "${session_path}"
       artifact_key: "manifest_doctor_md"
-      max_chars: 2000
+      max_chars: "${max_chars}"
 
   - step_id: compile_handoff
     tool_name: mcp_investigation_compile_handoff

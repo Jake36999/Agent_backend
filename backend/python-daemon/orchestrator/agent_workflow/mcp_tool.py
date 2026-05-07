@@ -214,6 +214,8 @@ def run_agent_workflow(
     patch_apply_request: dict[str, str] | None = None,
     pipeline_id: str | None = None,
     pipeline_vars: dict[str, str] | None = None,
+    pipeline_compiler: PipelineCompiler | None = None,
+    pipeline_loader: PipelineLoader | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -236,8 +238,8 @@ def run_agent_workflow(
         skill_registry_root=skill_registry_root,
     )
 
-    pipeline_compiler_inst = PipelineCompiler(allowed_tools=None) if pipeline_id else None
-    pipeline_loader_inst = PipelineLoader() if pipeline_id else None
+    pipeline_compiler_inst = pipeline_compiler if pipeline_id else None
+    pipeline_loader_inst = pipeline_loader if pipeline_id else None
 
     runner = WorkflowRunner(
         bridge_client=bridge_client,

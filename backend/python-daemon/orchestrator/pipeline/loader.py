@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
+from jsonschema import Draft7Validator
 
 from .models import PipelineDefinition, PipelineStep
 
@@ -12,6 +14,21 @@ from .models import PipelineDefinition, PipelineStep
 class PipelineLoadError(ValueError):
     pass
 
+
+_PIPELINE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+ACTIVE_PIPELINES: frozenset[str] = frozenset({"investigation", "patch_plan"})
+
+RESERVED_PIPELINE_IDS: frozenset[str] = frozenset({
+    "mcp_pipeline_run",
+    "mcp_agent_workflow_run",
+    "tools",
+    "admin",
+    "debug",
+    "schema",
+    "examples",
+    "staging",
+})
 
 _SCHEMA_PATH = Path(__file__).parent / "templates" / "pipeline.schema.json"
 
@@ -33,11 +50,20 @@ class PipelineLoader:
             return []
         return sorted(
             p.stem for p in self.templates_dir.glob("*.yaml")
-            if not p.name.startswith("_")
+            if _PIPELINE_ID_RE.fullmatch(p.stem) and p.stem in ACTIVE_PIPELINES
         )
 
     def load(self, pipeline_id: str) -> PipelineDefinition:
-        path = self.templates_dir / f"{pipeline_id}.yaml"
+        if not _PIPELINE_ID_RE.fullmatch(pipeline_id):
+            raise PipelineLoadError(f"invalid pipeline_id: {pipeline_id!r}")
+        if pipeline_id in RESERVED_PIPELINE_IDS:
+            raise PipelineLoadError(f"reserved pipeline_id: {pipeline_id!r}")
+        if pipeline_id not in ACTIVE_PIPELINES:
+            raise PipelineLoadError(f"pipeline_id is not active: {pipeline_id!r}")
+        path = (self.templates_dir / f"{pipeline_id}.yaml").resolve()
+        templates_root = self.templates_dir.resolve()
+        if templates_root not in path.parents:
+            raise PipelineLoadError("pipeline path escapes templates directory")
         if not path.exists():
             raise PipelineLoadError(f"pipeline template not found: {pipeline_id}")
         return self.load_file(path)
@@ -47,6 +73,12 @@ class PipelineLoader:
             raw = yaml.safe_load(fh)
         if not isinstance(raw, dict):
             raise PipelineLoadError(f"pipeline file is not a YAML mapping: {path}")
+        schema = _load_schema()
+        if schema:
+            errors = sorted(Draft7Validator(schema).iter_errors(raw), key=lambda e: list(e.path))
+            if errors:
+                msg = "; ".join(e.message for e in errors[:3])
+                raise PipelineLoadError(f"pipeline schema validation failed in {path.name}: {msg}")
         return self._parse(raw, source_path=path)
 
     def _parse(self, raw: dict[str, Any], source_path: Path | None = None) -> PipelineDefinition:

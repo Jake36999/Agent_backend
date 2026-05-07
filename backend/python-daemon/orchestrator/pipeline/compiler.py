@@ -9,6 +9,8 @@ from .models import CompiledPlan, PipelineDefinition, PipelineStep
 
 _VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)}")
 
+ALLOWED_UNRESOLVED_VARS: frozenset[str] = frozenset({"session_path"})
+
 
 class PipelineCompileError(ValueError):
     pass
@@ -29,6 +31,11 @@ class PipelineCompiler:
         todos: list[dict[str, Any]] = []
         for step in ordered:
             resolved_args = self._resolve_args(step.args_template, runtime_vars or {}, definition.variables)
+            unresolved = self._collect_unresolved(resolved_args)
+            if unresolved:
+                raise PipelineCompileError(
+                    f"step '{step.step_id}' has unresolved variables: {sorted(set(unresolved))}"
+                )
             todos.append(
                 {
                     "id": step.step_id,
@@ -82,6 +89,17 @@ class PipelineCompiler:
         except CycleError as exc:
             raise PipelineCompileError(f"dependency cycle detected: {exc}") from exc
         return [step_map[sid] for sid in ordered_ids]
+
+    def _collect_unresolved(self, args: dict[str, Any]) -> list[str]:
+        found: list[str] = []
+        for value in args.values():
+            if isinstance(value, str):
+                for m in _VAR_RE.finditer(value):
+                    if m.group(1) not in ALLOWED_UNRESOLVED_VARS:
+                        found.append(m.group(1))
+            elif isinstance(value, dict):
+                found.extend(self._collect_unresolved(value))
+        return found
 
     def _resolve_args(
         self,

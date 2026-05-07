@@ -62,6 +62,8 @@ export const CONTRACTS = [
         allow_ingest: { type: "boolean", default: false },
         include_report_preview: { type: "boolean", default: false },
         use_model_phases: { type: "boolean", default: false },
+        pipeline_id: { type: "string", pattern: "^[a-z][a-z0-9_]*$", maxLength: 64 },
+        pipeline_vars: { type: "object", maxProperties: 20, additionalProperties: { type: "string", maxLength: 2000 } },
       },
       required: ["objective", "target_repo"],
     },
@@ -274,23 +276,22 @@ export const CONTRACTS = [
     },
   },
   {
-    name: "mcp_pipeline_run",
-    description: "Run a declarative YAML pipeline workflow by pipeline_id.",
+    name: "mcp_code_intelligence",
+    description: "Analyze a repository for code maps, dependency graphs, repo context summaries, or Mermaid diagrams.",
     strict: true,
     inputSchema: {
       $schema: DRAFT7,
       type: "object",
       additionalProperties: false,
       properties: {
-        pipeline_id: { type: "string", minLength: 1 },
         target_repo: { type: "string", minLength: 1 },
-        objective: { type: "string", minLength: 1 },
-        profile: { type: "string", enum: ["safe"], default: "safe" },
-        allow_ingest: { type: "boolean", default: false },
-        include_report_preview: { type: "boolean", default: false },
-        pipeline_vars: { type: "object", additionalProperties: { type: "string" } },
+        mode: { type: "string", enum: ["code_map", "dependency_graph", "repo_context", "mermaid"] },
+        max_files: { type: "integer", minimum: 1, maximum: 2000 },
+        max_edges: { type: "integer", minimum: 1, maximum: 2000 },
+        max_chars: { type: "integer", minimum: 100, maximum: 12000 },
+        focus_paths: { type: "array", items: { type: "string", minLength: 1 } },
       },
-      required: ["pipeline_id", "target_repo"],
+      required: ["target_repo", "mode"],
     },
   },
   {
@@ -353,10 +354,19 @@ function validateObject(schema, value, path) {
         details.push({ path: joinPath(path, required), keyword: "required", message: `${required} is required` });
       }
     }
+    if (schema.maxProperties !== undefined && Object.keys(value).length > schema.maxProperties) {
+      details.push({ path, keyword: "maxProperties", message: `object has more than ${schema.maxProperties} properties` });
+    }
     if (schema.additionalProperties === false) {
       for (const key of Object.keys(value)) {
         if (!Object.hasOwn(properties, key)) {
           details.push({ path: joinPath(path, key), keyword: "additionalProperties", message: `${key} is not allowed` });
+        }
+      }
+    } else if (schema.additionalProperties !== undefined && typeof schema.additionalProperties === "object") {
+      for (const [key, val] of Object.entries(value)) {
+        if (!Object.hasOwn(properties, key)) {
+          details.push(...validateValue(schema.additionalProperties, val, joinPath(path, key)));
         }
       }
     }

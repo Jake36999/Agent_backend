@@ -425,42 +425,6 @@ PRAGMA synchronous = NORMAL;
 PRAGMA busy_timeout = 5000;
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS pipeline_definitions (
-  pipeline_id TEXT PRIMARY KEY,
-  version TEXT NOT NULL,
-  name TEXT NOT NULL,
-  description TEXT NOT NULL DEFAULT '',
-  source_yaml TEXT NOT NULL,
-  compiled_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-) STRICT, WITHOUT ROWID;
-
-CREATE TABLE IF NOT EXISTS pipeline_runs (
-  run_id TEXT PRIMARY KEY,
-  pipeline_id TEXT NOT NULL,
-  project_id TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('RUNNING', 'COMPLETED', 'FAILED')),
-  runtime_vars_json TEXT NOT NULL DEFAULT '{}',
-  created_at TEXT NOT NULL,
-  completed_at TEXT,
-  FOREIGN KEY (pipeline_id) REFERENCES pipeline_definitions(pipeline_id)
-) STRICT, WITHOUT ROWID;
-
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_pipeline_id
-ON pipeline_runs(pipeline_id);
-
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_state
-ON pipeline_runs(state);
-"""
-
-
-QUEUE_MIGRATION_0009 = """
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA busy_timeout = 5000;
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE IF NOT EXISTS capability_manifests (
   capability_id TEXT PRIMARY KEY,
   capability_type TEXT NOT NULL,
@@ -492,8 +456,7 @@ QUEUE_MIGRATIONS = (
     ("0005_snapshot_patch_records", QUEUE_MIGRATION_0005),
     ("0006_patch_artifacts", QUEUE_MIGRATION_0006),
     ("0007_patch_apply_approvals", QUEUE_MIGRATION_0007),
-    ("0008_pipeline_definitions", QUEUE_MIGRATION_0008),
-    ("0009_capability_registry", QUEUE_MIGRATION_0009),
+    ("0008_capability_registry", QUEUE_MIGRATION_0008),
 )
 CONTROL_MIGRATIONS = (("0001_initial", CONTROL_MIGRATION_0001),)
 
