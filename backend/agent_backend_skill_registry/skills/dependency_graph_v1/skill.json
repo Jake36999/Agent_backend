@@ -1,0 +1,62 @@
+{
+  "skill_id": "dependency_graph_v1",
+  "version": "0.2.0",
+  "name": "Dependency graph",
+  "description": "Extract inter-file import relationships for a repository and produce an adjacency list or Mermaid diagram. Supports Python (AST) and JavaScript/TypeScript (regex). Read-only.",
+  "triggers": [
+    "dependency graph",
+    "import graph",
+    "circular dependency",
+    "module dependencies",
+    "mermaid diagram",
+    "module topology"
+  ],
+  "capabilities": [
+    "dependency_graph",
+    "circular_dependency_detection",
+    "mermaid_export",
+    "import_analysis"
+  ],
+  "inputs_schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "target_repo": { "type": "string" },
+      "mode": { "type": "string", "enum": ["dependency_graph", "mermaid"] },
+      "focus_paths": { "type": "array", "items": { "type": "string" } },
+      "max_files": { "type": "integer" },
+      "max_edges": { "type": "integer" }
+    },
+    "required": ["target_repo", "mode"]
+  },
+  "outputs_schema": {
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+      "ok": { "type": "boolean" },
+      "mode": { "type": "string" },
+      "truncated": { "type": "boolean" }
+    },
+    "required": ["ok", "mode"]
+  },
+  "project_scope": ["*"],
+  "memory_scope": "project",
+  "tool_entrypoints": [
+    {
+      "entrypoint_type": "instruction_only",
+      "target": "SKILL.md"
+    }
+  ],
+  "allowed_tools": [
+    "mcp_code_intelligence",
+    "mcp_get_active_partition"
+  ],
+  "risk_tier": "T1",
+  "approval_requirements": {
+    "requires_user_approval": false,
+    "requires_diff_approval": false
+  },
+  "test_commands": [],
+  "rollback_strategy": "none",
+  "artifacts_produced": ["dependency_graph", "mermaid_diagram"]
+}

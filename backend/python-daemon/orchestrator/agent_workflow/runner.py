@@ -111,6 +111,7 @@ class WorkflowRunner:
         state.todos = [self._clone_todo(todo) for todo in plan]
         state_path = state.save(self.state_dir)
         session_path = ""
+        step_outputs: dict[str, dict[str, Any]] = {}
         executor = self.tool_client or self.bridge_client
 
         for todo in state.todos:
@@ -120,7 +121,20 @@ class WorkflowRunner:
             try:
                 if executor is None:
                     executor = TcpBridgeClient()
-                raw_result = executor.call_tool(todo["tool_name"], self._resolve_args(todo["args"], session_path))
+                resolved_args, binding_failures = self._resolve_args(
+                    todo["args"], session_path, step_outputs, step_id=todo["id"]
+                )
+                if binding_failures:
+                    msg = "; ".join(binding_failures)
+                    raw_result = {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": msg,
+                        "artifacts": {},
+                        "error": {"code": "binding_resolution_failed", "message": msg},
+                    }
+                else:
+                    raw_result = executor.call_tool(todo["tool_name"], resolved_args)
             except Exception as exc:
                 raw_result = {
                     "ok": False,
@@ -135,6 +149,13 @@ class WorkflowRunner:
                 max_chars=self.max_tool_result_chars,
                 include_content=include_report_preview and todo["tool_name"] == "mcp_investigation_read_report",
             )
+            step_outputs[todo["id"]] = {
+                "ok": compact.get("ok"),
+                "status": compact.get("status"),
+                "summary": compact.get("summary"),
+                "artifacts": compact.get("artifacts", {}),
+                "error": compact.get("error"),
+            }
             state.tool_results.append(compact)
             self._merge_artifacts(state.artifacts, compact.get("artifacts", {}))
 
@@ -166,6 +187,7 @@ class WorkflowRunner:
                 state.phase = "SYNTHESIZE"
                 state.final_summary = self._success_summary(state)
                 self._attach_round_one_artifacts(state, target_repo)
+                self._record_binding_trace(state, step_outputs)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -174,6 +196,7 @@ class WorkflowRunner:
         state.phase = "SYNTHESIZE"
         state.final_summary = self._success_summary(state)
         self._attach_round_one_artifacts(state, target_repo)
+        self._record_binding_trace(state, step_outputs)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -284,16 +307,70 @@ class WorkflowRunner:
             "description": todo["description"],
             "tool_name": todo["tool_name"],
             "args": dict(todo["args"]),
+            "outputs": dict(todo.get("outputs", {})),
         }
 
-    def _resolve_args(self, args: dict[str, Any], session_path: str) -> dict[str, Any]:
+    @staticmethod
+    def _is_binding(v: Any) -> bool:
+        return isinstance(v, dict) and v.get("__binding__") is True
+
+    def _resolve_binding(
+        self,
+        binding: dict[str, Any],
+        step_outputs: dict[str, dict[str, Any]],
+    ) -> tuple[bool, Any]:
+        """Returns (resolved, value). resolved=False if the bound artifact is missing."""
+        from_step = str(binding["from_step"])
+        path = str(binding["path"])
+        step_result = step_outputs.get(from_step)
+        if step_result is None:
+            return False, None
+        # Shallow two-segment path only, e.g. "artifacts.session_path"
+        prefix, _, key = path.partition(".")
+        cursor: Any = step_result.get(prefix) if isinstance(step_result, dict) else None
+        if isinstance(cursor, dict):
+            cursor = cursor.get(key)
+        else:
+            cursor = None
+        return (cursor is not None), cursor
+
+    def _resolve_args(
+        self,
+        args: dict[str, Any],
+        session_path: str,
+        step_outputs: dict[str, dict[str, Any]] | None = None,
+        *,
+        step_id: str = "",
+    ) -> tuple[dict[str, Any], list[str]]:
+        """Returns (resolved_args, binding_failures). Non-empty failures → policy block."""
         resolved: dict[str, Any] = {}
+        failures: list[str] = []
         for key, value in args.items():
-            if value == "${session_path}":
-                resolved[key] = session_path
+            if self._is_binding(value):
+                ok, result = self._resolve_binding(value, step_outputs or {})
+                if not ok:
+                    failures.append(
+                        f"step '{step_id}' requires {value['path']} from {value['from_step']}"
+                    )
+                    resolved[key] = None
+                else:
+                    resolved[key] = result
+            elif value == "${session_path}":
+                resolved[key] = session_path  # backward compat for patch_plan.yaml
             else:
                 resolved[key] = value
-        return resolved
+        return resolved, failures
+
+    def _record_binding_trace(
+        self,
+        state: WorkflowState,
+        step_outputs: dict[str, dict[str, Any]],
+    ) -> None:
+        if step_outputs:
+            state.artifacts["binding_trace"] = {
+                step_id: list(result.get("artifacts", {}).keys())
+                for step_id, result in step_outputs.items()
+            }
 
     def _merge_artifacts(self, merged: dict[str, str], artifacts: dict[str, Any]) -> None:
         for key, value in artifacts.items():

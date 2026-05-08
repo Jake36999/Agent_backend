@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from jsonschema import Draft7Validator
 
-from .models import PipelineDefinition, PipelineStep
+from .models import ArgBinding, PipelineDefinition, PipelineStep
 
 
 class PipelineLoadError(ValueError):
@@ -16,6 +16,33 @@ class PipelineLoadError(ValueError):
 
 
 _PIPELINE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+# Allowed shallow binding paths: prefix.name, e.g. "artifacts.session_path"
+_BINDING_PATH_RE = re.compile(
+    r"^(artifacts|result|error|status|summary)\.[A-Za-z_][A-Za-z0-9_]*$"
+)
+
+
+def _parse_arg_value(v: Any) -> Any:
+    """Convert a raw YAML arg value to a Python value, parsing bind: dicts into ArgBinding."""
+    if isinstance(v, dict):
+        keys = set(v.keys())
+        if keys == {"bind"}:
+            inner = v["bind"]
+            if not isinstance(inner, dict) or "from_step" not in inner or "path" not in inner:
+                raise PipelineLoadError(
+                    "malformed binding: 'bind' must contain 'from_step' and 'path'"
+                )
+            path = str(inner["path"])
+            if not _BINDING_PATH_RE.fullmatch(path):
+                raise PipelineLoadError(
+                    f"binding path {path!r} must be a shallow dot-path "
+                    "(e.g. 'artifacts.session_path'); deep paths are not supported"
+                )
+            return ArgBinding(from_step=str(inner["from_step"]), path=path)
+        # Normal dict (nested args) — recurse
+        return {k: _parse_arg_value(inner) for k, inner in v.items()}
+    return v
 
 ACTIVE_PIPELINES: frozenset[str] = frozenset({"investigation", "patch_plan"})
 
@@ -100,13 +127,19 @@ class PipelineLoader:
             step_missing = {"step_id", "tool_name", "description"} - set(raw_step.keys())
             if step_missing:
                 raise PipelineLoadError(f"step {i} missing fields: {', '.join(sorted(step_missing))}")
+            args_template = {
+                str(k): _parse_arg_value(val)
+                for k, val in raw_step.get("args", {}).items()
+            }
+            outputs = {str(k): str(v) for k, v in raw_step.get("outputs", {}).items()}
             steps.append(
                 PipelineStep(
                     step_id=str(raw_step["step_id"]),
                     tool_name=str(raw_step["tool_name"]),
-                    args_template=dict(raw_step.get("args", {})),
+                    args_template=args_template,
                     description=str(raw_step["description"]),
                     depends_on=tuple(str(d) for d in raw_step.get("depends_on", [])),
+                    outputs=outputs,
                     required_outputs=tuple(str(o) for o in raw_step.get("required_outputs", [])),
                     negative_constraints=tuple(str(c) for c in raw_step.get("negative_constraints", [])),
                     depth=int(raw_step.get("depth", 0)),

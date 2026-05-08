@@ -3,6 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 
+def _compact_error(error: Any) -> dict[str, str] | None:
+    if not isinstance(error, dict):
+        return None
+    return {
+        "code": str(error.get("code", ""))[:120],
+        "message": str(error.get("message", ""))[:1000],
+    }
+
+
 def compact_tool_result(
     tool_name: str,
     raw: dict[str, Any],
@@ -22,6 +31,7 @@ def compact_tool_result(
         "top_candidates": top_candidates_raw[:10],
         "recommended_next_tool": str(payload.get("recommended_next_tool", "")),
         "content_omitted": True,
+        "error": _compact_error(payload.get("error")),
     }
     if include_content and isinstance(payload.get("content"), str):
         content = str(payload["content"])

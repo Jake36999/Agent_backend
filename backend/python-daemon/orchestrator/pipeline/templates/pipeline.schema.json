@@ -25,6 +25,13 @@
           "tool_name": { "type": "string", "pattern": "^mcp_[a-z_]+$" },
           "description": { "type": "string", "minLength": 1 },
           "args": { "type": "object" },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string",
+              "pattern": "^(artifacts|result|error|status|summary)\\.[A-Za-z_][A-Za-z0-9_]*$"
+            }
+          },
           "depends_on": {
             "type": "array",
             "items": { "type": "string" }

@@ -78,6 +78,34 @@ Tables use `STRICT, WITHOUT ROWID` where appropriate. Foreign keys are enforced.
 - **Active Partition**: Tracks which LM Studio conversation is in focus. Scopes memory commits and searches to a project.
 - **Bridge Security** (`bridge_server.py`): HMAC-SHA256 with nonce dedup (4096-entry LRU) and 300s timestamp tolerance.
 
+## Pipeline Output Bindings (Phase 2B)
+
+Steps declare what they produce via `outputs` and consume upstream results via `bind:` YAML tags:
+
+```yaml
+- step_id: start_investigation
+  tool_name: mcp_investigation_start
+  outputs:
+    session_path: artifacts.session_path   # declares what this step emits
+
+- step_id: filemap
+  depends_on: [start_investigation]
+  args:
+    session_path:
+      bind:
+        from_step: start_investigation
+        path: artifacts.session_path       # resolved at runtime from step_outputs
+```
+
+Key constraints:
+- `outputs` is declarative/trace-oriented — it documents intent, does not gate execution.
+- Runtime binding reads from compacted step outputs (`step_outputs[step_id]["artifacts"][key]`).
+- Only **shallow paths** are allowed: `artifacts.key`, `result.key`, `status.key`, etc. Deep paths (two+ dots) are rejected at load time.
+- A missing binding value produces `POLICY_BLOCK` / `binding_resolution_failed` — the executor is never called with an unresolved sentinel.
+- `${session_path}` is retained for backward compatibility in `patch_plan.yaml` but deprecated — remove when that template is migrated.
+
+See `docs/phase-2b-output-bindings.md` for the full design record.
+
 ## Conventions
 
 - Python daemon uses `dataclass(frozen=True)` for models and config
