@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
 
 from .dependency_extractor import DependencyExtractor
 from .mermaid_formatter import format_mermaid
-from .models import CodeMapEntry, DependencyGraph
+from .models import CodeMapEntry, DependencyEdge, DependencyGraph
 
 _SKIP_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv", ".env",
@@ -27,6 +28,93 @@ _LANGUAGE_MAP: dict[str, str] = {
     "html": "html", "htm": "html",
     "css": "css", "scss": "css",
 }
+
+
+_TEST_DIR_NAMES = frozenset({
+    "tests", "test", "spec", "specs", "__tests__", "e2e", "testing", "integration",
+})
+_ENTRYPOINT_NAMES = frozenset({
+    "main.py", "__main__.py", "app.py", "server.py", "index.py", "run.py",
+    "cli.py", "manage.py", "wsgi.py", "asgi.py",
+    "index.js", "index.mjs", "index.ts", "server.js", "app.js", "main.js", "main.ts",
+})
+_TODO_PATTERNS = ("TODO", "FIXME", "HACK", "XXX")
+_MAX_TODO_FILE_SIZE = 1_000_000
+
+
+def _detect_test_dirs(entries: list[CodeMapEntry]) -> list[str]:
+    dirs: set[str] = set()
+    for e in entries:
+        parts = e.rel_path.replace("\\", "/").split("/")
+        for i, part in enumerate(parts[:-1]):
+            if part.lower() in _TEST_DIR_NAMES:
+                dirs.add("/".join(parts[: i + 1]))
+    return sorted(dirs)[:20]
+
+
+def _detect_entrypoints(entries: list[CodeMapEntry]) -> list[str]:
+    result = []
+    for e in entries:
+        fname = e.rel_path.replace("\\", "/").rsplit("/", 1)[-1].lower()
+        if fname in _ENTRYPOINT_NAMES:
+            result.append(e.rel_path)
+    return result[:20]
+
+
+def _scan_todo_fixme(root: Path, entries: list[CodeMapEntry]) -> list[dict]:
+    results = []
+    for e in entries:
+        abs_path = root / e.rel_path
+        try:
+            if abs_path.stat().st_size > _MAX_TODO_FILE_SIZE:
+                continue
+            text = abs_path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        counts: dict[str, int] = {}
+        for pattern in _TODO_PATTERNS:
+            c = text.count(pattern)
+            if c:
+                counts[pattern] = c
+        if counts:
+            results.append({
+                "path": e.rel_path,
+                "count": sum(counts.values()),
+                "kinds": sorted(counts.keys()),
+            })
+    results.sort(key=lambda x: -x["count"])
+    return results[:20]
+
+
+def _compute_fan(edges: list[DependencyEdge]) -> tuple[list[dict], list[dict]]:
+    fan_in: dict[str, int] = {}
+    fan_out: dict[str, int] = {}
+    for edge in edges:
+        if edge.is_external:
+            continue
+        fan_out[edge.source] = fan_out.get(edge.source, 0) + 1
+        fan_in[edge.target] = fan_in.get(edge.target, 0) + 1
+    fi = sorted([{"path": k, "count": v} for k, v in fan_in.items()], key=lambda x: -x["count"])[:20]
+    fo = sorted([{"path": k, "count": v} for k, v in fan_out.items()], key=lambda x: -x["count"])[:20]
+    return fi, fo
+
+
+def _compute_orphans(graph: DependencyGraph) -> list[str]:
+    connected: set[str] = set()
+    for edge in graph.edges:
+        if not edge.is_external:
+            connected.add(edge.source)
+            connected.add(edge.target)
+    return sorted(n for n in graph.nodes if n not in connected)[:20]
+
+
+def _extract_externals(graph: DependencyGraph) -> list[str]:
+    ext: set[str] = set()
+    for edge in graph.edges:
+        if edge.is_external:
+            pkg = edge.target.split(".")[0].split("/")[0]
+            ext.add(pkg)
+    return sorted(ext)[:50]
 
 
 class CodeIntelligenceError(ValueError):
@@ -79,7 +167,7 @@ class CodeIntelligenceAnalyzer:
         if mode == "dependency_graph":
             return self._dependency_graph(root, entries, max_edges)
         if mode == "repo_context":
-            return self._repo_context(root, entries, max_chars)
+            return self._repo_context(root, entries, max_chars, truncated_scan)
         if mode == "mermaid":
             graph = self._build_graph(root, entries, max_edges)
             diagram = format_mermaid(graph)
@@ -205,6 +293,7 @@ class CodeIntelligenceAnalyzer:
             f"{len(graph.nodes)} nodes, {len(graph.edges)} edges"
             + (" [truncated]" if graph.truncated else "")
         )[:500]
+        fan_in, fan_out = _compute_fan(graph.edges)
         return {
             "ok": True,
             "mode": "dependency_graph",
@@ -221,11 +310,18 @@ class CodeIntelligenceAnalyzer:
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
             "truncated": graph.truncated,
-            "artifacts": {"dependency_graph_summary": artifact_summary},
+            "artifacts": {
+                "dependency_graph_summary": artifact_summary,
+                "fan_in_json": json.dumps(fan_in)[:2000],
+                "fan_out_json": json.dumps(fan_out)[:2000],
+                "orphans_json": json.dumps(_compute_orphans(graph))[:2000],
+                "external_deps_json": json.dumps(_extract_externals(graph))[:2000],
+            },
         }
 
     def _repo_context(
-        self, root: Path, entries: list[CodeMapEntry], max_chars: int
+        self, root: Path, entries: list[CodeMapEntry], max_chars: int,
+        truncated_scan: bool = False,
     ) -> dict[str, Any]:
         lang_counts: dict[str, int] = {}
         for e in entries:
@@ -242,12 +338,13 @@ class CodeIntelligenceAnalyzer:
                     top_dirs.append(d)
 
         by_lines = sorted(entries, key=lambda e: -e.line_count)
+        total_lines = sum(e.line_count for e in entries)
 
         sections: list[str] = [
             f"# Repo Context: {root.name}",
             "",
-            f"## Summary",
-            f"{len(entries)} files, {sum(e.line_count for e in entries):,} total lines",
+            "## Summary",
+            f"{len(entries)} files, {total_lines:,} total lines",
             "",
             "## Languages",
             *[f"- {lang}: {count}" for lang, count in sorted(lang_counts.items(), key=lambda x: -x[1])],
@@ -263,11 +360,30 @@ class CodeIntelligenceAnalyzer:
         if len(context) > max_chars:
             context = context[:max_chars - 3] + "..."
 
+        lang_summary = ", ".join(f"{k}:{v}" for k, v in sorted(lang_counts.items(), key=lambda x: -x[1]))
+        code_map_summary = (
+            f"{len(entries)} files, {total_lines:,} lines"
+            + (" [truncated]" if truncated_scan else "")
+            + (f" | {lang_summary}" if lang_summary else "")
+        )[:2000]
+
         return {
             "ok": True,
             "mode": "repo_context",
             "context": context,
             "char_count": len(context),
             "truncated": len(context) >= max_chars,
-            "artifacts": {"repo_context_md": context},
+            "artifacts": {
+                "repo_context_md": context,
+                "code_map_summary": code_map_summary,
+                "largest_files_json": json.dumps(
+                    [{"path": e.rel_path, "line_count": e.line_count} for e in by_lines[:20]]
+                )[:4000],
+                "language_counts_json": json.dumps(
+                    [[k, v] for k, v in sorted(lang_counts.items(), key=lambda x: -x[1])]
+                )[:1000],
+                "test_dirs_json": json.dumps(_detect_test_dirs(entries))[:1000],
+                "entrypoints_json": json.dumps(_detect_entrypoints(entries))[:1000],
+                "todo_fixme_json": json.dumps(_scan_todo_fixme(root, entries))[:4000],
+            },
         }

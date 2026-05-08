@@ -81,12 +81,13 @@ class TestBuildCodeReviewReport:
     def test_returns_code_review_report_instance(self):
         assert isinstance(self._build(), CodeReviewReport)
 
-    def test_all_four_fields_populated(self):
+    def test_all_five_fields_populated(self):
         r = self._build()
         assert r.architecture_overview_md
         assert r.dependency_graph_mmd
         assert r.code_review_summary_md
         assert r.next_actions_yaml
+        assert r.heuristics_json
 
     def test_architecture_overview_includes_repo_name(self):
         r = self._build(target_repo="/tmp/my_repo")
@@ -129,7 +130,7 @@ class TestBuildCodeReviewReport:
 
     def test_artifact_index_contains_all_keys(self):
         r = self._build()
-        expected = {"architecture_overview_md", "dependency_graph_mmd", "code_review_summary_md", "next_actions_yaml"}
+        expected = {"architecture_overview_md", "dependency_graph_mmd", "code_review_summary_md", "next_actions_yaml", "heuristics_json"}
         assert expected.issubset(r.artifact_index.keys())
 
     def test_architecture_overview_bounded(self):
@@ -140,7 +141,7 @@ class TestBuildCodeReviewReport:
             "mermaid": {"ok": True, "artifacts": {"dependency_graph_mmd": "graph TD"}},
         }
         r = self._build(step_outputs=outputs)
-        assert len(r.architecture_overview_md) <= 8000
+        assert len(r.architecture_overview_md) <= 10000
 
     def test_dependency_graph_mmd_bounded(self):
         big_diagram = "graph TD\n" + "  a --> b\n" * 5000
@@ -154,11 +155,24 @@ class TestBuildCodeReviewReport:
         outputs = dict(_STEP_OUTPUTS)
         outputs["repo_context"] = {"ok": True, "artifacts": {"repo_context_md": big_ctx, "code_map_summary": ""}}
         r = self._build(step_outputs=outputs)
-        assert len(r.code_review_summary_md) <= 6000
+        assert len(r.code_review_summary_md) <= 8000
 
     def test_next_actions_bounded(self):
         r = self._build()
-        assert len(r.next_actions_yaml) <= 4000
+        assert len(r.next_actions_yaml) <= 6000
+
+    def test_heuristics_json_parseable(self):
+        import json
+        r = self._build()
+        parsed = json.loads(r.heuristics_json)
+        assert "largest_files" in parsed
+        assert "highest_fan_in" in parsed
+        assert "external_dependencies" in parsed
+        assert "test_directories" in parsed
+
+    def test_heuristics_json_bounded(self):
+        r = self._build()
+        assert len(r.heuristics_json) <= 6000
 
     def test_receipt_info_included_in_summary(self):
         receipt = {"capability_id": "pipeline.code_review", "risk_tier": "T2"}

@@ -384,6 +384,7 @@ class WorkflowRunner:
         step_outputs: dict[str, dict[str, Any]],
         target_repo: str,
     ) -> None:
+        import json
         from orchestrator.code_review.report_builder import build_code_review_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_code_review_report(
@@ -395,7 +396,7 @@ class WorkflowRunner:
         state.artifacts["dependency_graph_mmd"] = report.dependency_graph_mmd
         state.artifacts["code_review_summary_md"] = report.code_review_summary_md
         state.artifacts["next_actions_yaml"] = report.next_actions_yaml
-        import json
+        state.artifacts["heuristics_json"] = report.heuristics_json
         state.artifacts["code_review_report_index"] = json.dumps(report.artifact_index)[:2000]
 
     def _attach_pipeline_receipt(
