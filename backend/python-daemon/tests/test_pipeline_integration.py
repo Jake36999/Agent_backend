@@ -4,10 +4,49 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from orchestrator.agent_workflow.compaction import _compact_error, compact_tool_result
 from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
 from orchestrator.agent_workflow.runner import WorkflowRunner
 from orchestrator.pipeline.compiler import PipelineCompiler
 from orchestrator.pipeline.loader import PipelineLoader
+
+
+class TestCompactError:
+    def test_none_input_returns_none(self):
+        assert _compact_error(None) is None
+
+    def test_non_dict_returns_none(self):
+        assert _compact_error("binding_resolution_failed") is None
+        assert _compact_error(42) is None
+
+    def test_oversized_code_is_truncated(self):
+        result = _compact_error({"code": "x" * 200, "message": "ok"})
+        assert result is not None
+        assert len(result["code"]) == 120
+
+    def test_oversized_message_is_truncated(self):
+        result = _compact_error({"code": "err", "message": "m" * 2000})
+        assert result is not None
+        assert len(result["message"]) == 1000
+
+    def test_binding_resolution_failed_survives_compaction(self):
+        raw = {
+            "ok": False,
+            "status": "POLICY_BLOCK",
+            "summary": "binding failed",
+            "artifacts": {},
+            "error": {"code": "binding_resolution_failed", "message": "step 'x' requires artifacts.session_path from start"},
+        }
+        compact = compact_tool_result("mcp_investigation_filemap", raw)
+        err = compact.get("error")
+        assert isinstance(err, dict)
+        assert err["code"] == "binding_resolution_failed"
+        assert "session_path" in err["message"]
+
+    def test_extra_error_fields_are_dropped(self):
+        result = _compact_error({"code": "err", "message": "msg", "stack": "x" * 5000, "internal": {}})
+        assert result is not None
+        assert set(result.keys()) == {"code", "message"}
 
 
 def _make_runner(tool_responses: list[dict] | None = None) -> WorkflowRunner:
