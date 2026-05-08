@@ -14,6 +14,7 @@ def compact_tool_result(
     artifacts = {str(key): str(value) for key, value in artifacts_raw.items() if value is not None}
     top_candidates_raw = payload.get("top_candidates") if isinstance(payload.get("top_candidates"), list) else []
     summary = str(payload.get("summary") or payload.get("message") or payload.get("status") or tool_name)[:1000]
+    error = payload.get("error")
     compact: dict[str, Any] = {
         "ok": bool(payload.get("ok", False)),
         "status": str(payload.get("status", "ERROR")),
@@ -22,6 +23,7 @@ def compact_tool_result(
         "top_candidates": top_candidates_raw[:10],
         "recommended_next_tool": str(payload.get("recommended_next_tool", "")),
         "content_omitted": True,
+        "error": error if isinstance(error, dict) else None,
     }
     if include_content and isinstance(payload.get("content"), str):
         content = str(payload["content"])

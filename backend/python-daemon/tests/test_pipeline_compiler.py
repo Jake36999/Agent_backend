@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from orchestrator.pipeline.models import PipelineDefinition, PipelineStep
+from orchestrator.pipeline.models import ArgBinding, PipelineDefinition, PipelineStep
 from orchestrator.pipeline.compiler import PipelineCompiler, PipelineCompileError
 from orchestrator.pipeline.loader import PipelineLoader, PipelineLoadError
 
@@ -289,6 +289,199 @@ class TestPipelineLoader:
             loader = PipelineLoader()
             with pytest.raises(PipelineLoadError, match="schema validation failed"):
                 loader.load_file(Path(f.name))
+
+
+class TestArgBindingCompiler:
+    """Compile-time binding validation tests."""
+
+    def _two_step_def(self, a_args=None, b_args=None, b_deps=("a",)):
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start", args_template=a_args or {}, description="A"),
+            PipelineStep(step_id="b", tool_name="mcp_investigation_filemap", args_template=b_args or {}, description="B", depends_on=b_deps),
+        )
+        return PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+
+    def test_valid_binding_serializes_to_sentinel(self):
+        defn = self._two_step_def(b_args={"session_path": ArgBinding(from_step="a", path="artifacts.session_path")})
+        plan = PipelineCompiler().compile_to_plan_list(defn)
+        assert plan[1]["args"]["session_path"] == {
+            "__binding__": True,
+            "from_step": "a",
+            "path": "artifacts.session_path",
+        }
+
+    def test_compiled_plan_has_outputs_field(self):
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start", args_template={}, description="A",
+                         outputs={"session_path": "artifacts.session_path"}),
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        plan = PipelineCompiler().compile_to_plan_list(defn)
+        assert plan[0]["outputs"] == {"session_path": "artifacts.session_path"}
+
+    def test_binding_from_unknown_step_rejected(self):
+        defn = self._two_step_def(b_args={"x": ArgBinding(from_step="nonexistent", path="artifacts.foo")})
+        with pytest.raises(PipelineCompileError, match="unknown step"):
+            PipelineCompiler().compile_to_plan_list(defn)
+
+    def test_binding_to_predecessor_is_valid(self):
+        """a depends on b and binds to b — b precedes a, so this is valid."""
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start",
+                         args_template={"x": ArgBinding(from_step="b", path="artifacts.foo")},
+                         description="A", depends_on=("b",)),
+            PipelineStep(step_id="b", tool_name="mcp_investigation_filemap", args_template={}, description="B"),
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        plan = PipelineCompiler().compile_to_plan_list(defn)
+        assert plan[0]["id"] == "b"
+        assert plan[1]["id"] == "a"
+
+    def test_binding_forward_reference_requires_cycle_is_rejected(self):
+        """A references B's output but B depends on A → cycle → rejected."""
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start",
+                         args_template={"x": ArgBinding(from_step="b", path="artifacts.foo")},
+                         description="A", depends_on=("b",)),
+            PipelineStep(step_id="b", tool_name="mcp_investigation_filemap", args_template={},
+                         description="B", depends_on=("a",)),
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        with pytest.raises(PipelineCompileError, match="cycle"):
+            PipelineCompiler().compile_to_plan_list(defn)
+
+    def test_binding_non_dependency_rejected(self):
+        """from_step exists and precedes, but is not listed in depends_on."""
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start", args_template={}, description="A"),
+            PipelineStep(step_id="b", tool_name="mcp_investigation_filemap",
+                         args_template={"x": ArgBinding(from_step="a", path="artifacts.foo")},
+                         description="B", depends_on=()),  # depends_on missing "a"
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        with pytest.raises(PipelineCompileError, match="not listed in depends_on"):
+            PipelineCompiler().compile_to_plan_list(defn)
+
+    def test_binding_self_reference_rejected(self):
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_start",
+                         args_template={"x": ArgBinding(from_step="a", path="artifacts.foo")},
+                         description="A"),
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        with pytest.raises(PipelineCompileError, match="references itself"):
+            PipelineCompiler().compile_to_plan_list(defn)
+
+    def test_legacy_session_path_still_compiles(self):
+        """${session_path} remains in ALLOWED_UNRESOLVED_VARS for backward compat."""
+        steps = (
+            PipelineStep(step_id="a", tool_name="mcp_investigation_filemap",
+                         args_template={"session_path": "${session_path}"},
+                         description="A"),
+        )
+        defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
+        plan = PipelineCompiler().compile_to_plan_list(defn)
+        assert plan[0]["args"]["session_path"] == "${session_path}"
+
+
+class TestArgBindingLoader:
+    """Loader-level binding parsing tests."""
+
+    def _write_yaml(self, content: dict) -> Path:
+        import tempfile
+        f = tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False, encoding="utf-8")
+        yaml.dump(content, f)
+        f.flush()
+        f.close()
+        return Path(f.name)
+
+    def test_loader_parses_bind_tag(self):
+        path = self._write_yaml({
+            "pipeline_id": "investigation",
+            "version": "1.1.0",
+            "name": "Test",
+            "steps": [
+                {"step_id": "start", "tool_name": "mcp_investigation_start", "description": "A",
+                 "outputs": {"session_path": "artifacts.session_path"}},
+                {"step_id": "filemap", "tool_name": "mcp_investigation_filemap", "description": "B",
+                 "depends_on": ["start"],
+                 "args": {"session_path": {"bind": {"from_step": "start", "path": "artifacts.session_path"}}}},
+            ],
+        })
+        loader = PipelineLoader()
+        defn = loader.load_file(path)
+        binding = defn.steps[1].args_template["session_path"]
+        assert isinstance(binding, ArgBinding)
+        assert binding.from_step == "start"
+        assert binding.path == "artifacts.session_path"
+        assert defn.steps[0].outputs == {"session_path": "artifacts.session_path"}
+
+    def test_loader_rejects_deep_binding_path(self):
+        path = self._write_yaml({
+            "pipeline_id": "investigation",
+            "version": "1.0.0",
+            "name": "Test",
+            "steps": [
+                {"step_id": "a", "tool_name": "mcp_investigation_start", "description": "A"},
+                {"step_id": "b", "tool_name": "mcp_investigation_filemap", "description": "B",
+                 "depends_on": ["a"],
+                 "args": {"x": {"bind": {"from_step": "a", "path": "artifacts.deep.nested"}}}},
+            ],
+        })
+        with pytest.raises(PipelineLoadError, match="deep paths are not supported"):
+            PipelineLoader().load_file(path)
+
+    def test_loader_rejects_malformed_bind_missing_path(self):
+        path = self._write_yaml({
+            "pipeline_id": "investigation",
+            "version": "1.0.0",
+            "name": "Test",
+            "steps": [
+                {"step_id": "a", "tool_name": "mcp_investigation_start", "description": "A"},
+                {"step_id": "b", "tool_name": "mcp_investigation_filemap", "description": "B",
+                 "depends_on": ["a"],
+                 "args": {"x": {"bind": {"from_step": "a"}}}},  # missing path
+            ],
+        })
+        with pytest.raises(PipelineLoadError, match="malformed binding"):
+            PipelineLoader().load_file(path)
+
+    def test_plain_dict_without_bind_key_not_treated_as_binding(self):
+        """A dict WITHOUT a 'bind' key is loaded as a normal nested arg, not a binding."""
+        path = self._write_yaml({
+            "pipeline_id": "investigation",
+            "version": "1.0.0",
+            "name": "Test",
+            "steps": [
+                {"step_id": "a", "tool_name": "mcp_commit_memory", "description": "A",
+                 "args": {"metadata": {"source": "my_source"}}},
+            ],
+        })
+        defn = PipelineLoader().load_file(path)
+        assert defn.steps[0].args_template["metadata"] == {"source": "my_source"}
+
+    def test_investigation_template_uses_bindings(self):
+        """Migrated investigation.yaml loads with ArgBinding objects in steps 1-4."""
+        loader = PipelineLoader()
+        defn = loader.load("investigation")
+        assert defn.version == "1.1.0"
+        assert defn.steps[0].outputs == {"session_path": "artifacts.session_path"}
+        for step in defn.steps[1:]:
+            binding = step.args_template.get("session_path")
+            assert isinstance(binding, ArgBinding), f"step {step.step_id} missing binding"
+            assert binding.from_step == "start_investigation"
+            assert binding.path == "artifacts.session_path"
+
+    def test_patch_plan_backward_compat(self):
+        """patch_plan.yaml still uses ${session_path} and loads without error."""
+        loader = PipelineLoader()
+        defn = loader.load("patch_plan")
+        session_paths = [
+            step.args_template.get("session_path")
+            for step in defn.steps
+            if "session_path" in step.args_template
+        ]
+        assert all(v == "${session_path}" for v in session_paths)
 
 
 class TestPublicCapabilityDict:
