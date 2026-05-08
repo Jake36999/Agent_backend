@@ -188,6 +188,7 @@ class WorkflowRunner:
                 state.final_summary = self._success_summary(state)
                 self._attach_round_one_artifacts(state, target_repo)
                 self._record_binding_trace(state, step_outputs)
+                self._attach_pipeline_receipt(state, plan, step_outputs)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -197,6 +198,7 @@ class WorkflowRunner:
         state.final_summary = self._success_summary(state)
         self._attach_round_one_artifacts(state, target_repo)
         self._record_binding_trace(state, step_outputs)
+        self._attach_pipeline_receipt(state, plan, step_outputs)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -371,6 +373,35 @@ class WorkflowRunner:
                 step_id: list(result.get("artifacts", {}).keys())
                 for step_id, result in step_outputs.items()
             }
+
+    def _attach_pipeline_receipt(
+        self,
+        state: WorkflowState,
+        plan: list[dict[str, Any]],
+        step_outputs: dict[str, dict[str, Any]],
+    ) -> None:
+        pipeline_id = state.artifacts.get("pipeline_id")
+        if not pipeline_id:
+            return
+        from orchestrator.capabilities.receipt import build_receipt, compact_receipt
+        artifact_refs = [
+            key
+            for result in step_outputs.values()
+            for key in result.get("artifacts", {}).keys()
+        ][:20]
+        completed = sum(1 for r in step_outputs.values() if r.get("ok"))
+        receipt = build_receipt(
+            capability_id=f"pipeline.{pipeline_id}",
+            capability_type="pipeline",
+            risk_tier="T2",
+            status="OK",
+            authorized=True,
+            network_access=False,
+            writes_external_state=True,
+            artifact_refs=artifact_refs,
+            summary=f"Executed {pipeline_id} pipeline ({len(plan)} steps, {completed} complete).",
+        )
+        state.artifacts["pipeline_receipt"] = compact_receipt(receipt)
 
     def _merge_artifacts(self, merged: dict[str, str], artifacts: dict[str, Any]) -> None:
         for key, value in artifacts.items():

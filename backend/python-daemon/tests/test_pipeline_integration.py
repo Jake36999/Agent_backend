@@ -166,6 +166,60 @@ class TestPipelineOutputBindings:
         assert filemap_args["session_path"] == "/tmp/patch_session"
 
 
+class TestPipelineReceiptAttachment:
+    def test_pipeline_receipt_present_on_success(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True
+        receipt = response.get("artifacts", {}).get("pipeline_receipt")
+        assert isinstance(receipt, dict), "pipeline_receipt must be a dict"
+        assert receipt["operation"] == "capability.execute"
+        assert receipt["capability_id"] == "pipeline.investigation"
+        assert receipt["capability_type"] == "pipeline"
+        assert receipt["risk_tier"] == "T2"
+        assert receipt["authorized"] is True
+        assert receipt["network_access"] is False
+
+    def test_pipeline_receipt_absent_without_pipeline_id(self):
+        runner = _make_runner()
+        _state, response = runner.run(objective="audit", target_repo="/tmp/repo")
+        assert "pipeline_receipt" not in response.get("artifacts", {})
+
+    def test_pipeline_receipt_no_source_path(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        receipt_str = str(response.get("artifacts", {}).get("pipeline_receipt", {}))
+        assert "source_path" not in receipt_str
+        assert "allowed_roots" not in receipt_str
+
+    def test_pipeline_receipt_artifact_refs_bounded(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {f"key_{i}": f"val_{i}" for i in range(25)},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        receipt = response.get("artifacts", {}).get("pipeline_receipt") or {}
+        assert len(receipt.get("artifact_refs", [])) <= 20
+
+
 class TestPipelineIntegration:
     def test_workflow_runner_sets_pipeline_artifacts(self):
         runner = _make_runner()
