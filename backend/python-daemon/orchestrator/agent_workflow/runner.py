@@ -188,9 +188,9 @@ class WorkflowRunner:
                 state.final_summary = self._success_summary(state)
                 self._attach_round_one_artifacts(state, target_repo)
                 self._record_binding_trace(state, step_outputs)
-                if state.artifacts.get("pipeline_id") == "code_review":
-                    self._attach_code_review_summary(state, step_outputs)
                 self._attach_pipeline_receipt(state, plan, step_outputs)
+                if state.artifacts.get("pipeline_id") == "code_review":
+                    self._attach_code_review_summary(state, step_outputs, target_repo)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -200,9 +200,9 @@ class WorkflowRunner:
         state.final_summary = self._success_summary(state)
         self._attach_round_one_artifacts(state, target_repo)
         self._record_binding_trace(state, step_outputs)
-        if state.artifacts.get("pipeline_id") == "code_review":
-            self._attach_code_review_summary(state, step_outputs)
         self._attach_pipeline_receipt(state, plan, step_outputs)
+        if state.artifacts.get("pipeline_id") == "code_review":
+            self._attach_code_review_summary(state, step_outputs, target_repo)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -382,29 +382,21 @@ class WorkflowRunner:
         self,
         state: WorkflowState,
         step_outputs: dict[str, dict[str, Any]],
+        target_repo: str,
     ) -> None:
-        def _artifact(step_id: str, key: str) -> str:
-            return str(step_outputs.get(step_id, {}).get("artifacts", {}).get(key) or "")
-
-        repo_ctx = _artifact("repo_context", "repo_context_md")
-        graph_summary = _artifact("dependency_graph", "dependency_graph_summary")
-        mmd_present = bool(_artifact("mermaid", "dependency_graph_mmd"))
-
-        parts = [
-            "## Code Review Summary",
-            "",
-            "**Analysis type:** read-only, no files modified",
-            "",
-        ]
-        if repo_ctx:
-            preview = repo_ctx[:500].rstrip()
-            parts += ["### Repository Context", preview, ""]
-        if graph_summary:
-            parts += ["### Dependency Graph", graph_summary, ""]
-        if mmd_present:
-            parts += ["### Mermaid Diagram", "Artifact key: `dependency_graph_mmd`", ""]
-
-        state.artifacts["code_review_summary"] = "\n".join(parts)[:4000]
+        from orchestrator.code_review.report_builder import build_code_review_report
+        pipeline_receipt = state.artifacts.get("pipeline_receipt")
+        report = build_code_review_report(
+            target_repo=target_repo,
+            step_outputs=step_outputs,
+            pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
+        )
+        state.artifacts["architecture_overview_md"] = report.architecture_overview_md
+        state.artifacts["dependency_graph_mmd"] = report.dependency_graph_mmd
+        state.artifacts["code_review_summary_md"] = report.code_review_summary_md
+        state.artifacts["next_actions_yaml"] = report.next_actions_yaml
+        import json
+        state.artifacts["code_review_report_index"] = json.dumps(report.artifact_index)[:2000]
 
     def _attach_pipeline_receipt(
         self,

@@ -249,14 +249,37 @@ class TestCodeReviewPipeline:
         assert response["artifacts"]["pipeline_id"] == "code_review"
         assert response["artifacts"]["compiled_step_count"] == 3
 
-    def test_code_review_summary_present(self):
+    def test_code_review_report_artifacts_present(self):
         runner, _calls = self._code_review_runner()
         _state, response = runner.run(
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
-        summary = response["artifacts"].get("code_review_summary", "")
-        assert "read-only" in summary
-        assert "no files modified" in summary
+        artifacts = response["artifacts"]
+        assert "architecture_overview_md" in artifacts
+        assert "dependency_graph_mmd" in artifacts
+        assert "code_review_summary_md" in artifacts
+        assert "next_actions_yaml" in artifacts
+        assert "code_review_report_index" in artifacts
+
+    def test_code_review_summary_md_content(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        summary = response["artifacts"].get("code_review_summary_md", "")
+        assert "read-only" in summary.lower() or "no files modified" in summary.lower()
+
+    def test_code_review_next_actions_deterministic(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        yaml_text = response["artifacts"].get("next_actions_yaml", "")
+        assert "suggested_followups" in yaml_text
+        assert "candidate follow-up" in yaml_text
+        # must not contain LLM critique language
+        for forbidden in ("vulnerability", "bug", "security risk", "severity"):
+            assert forbidden not in yaml_text.lower()
 
     def test_code_review_pipeline_receipt_is_t2(self):
         runner, _calls = self._code_review_runner()
