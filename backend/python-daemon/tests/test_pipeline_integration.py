@@ -220,6 +220,67 @@ class TestPipelineReceiptAttachment:
         assert len(receipt.get("artifact_refs", [])) <= 20
 
 
+class TestCodeReviewPipeline:
+    _CI_RESPONSE = {
+        "ok": True, "status": "COMPLETE", "summary": "analyzed",
+        "artifacts": {
+            "repo_context_md": "# Repo Context\n\n10 files, 1000 lines",
+            "dependency_graph_summary": "5 nodes, 8 edges",
+            "dependency_graph_mmd": "graph TD\n  a --> b",
+            "code_map_summary": "10 files",
+        },
+    }
+
+    def _code_review_runner(self):
+        return _make_runner_with_capture({"mcp_code_intelligence": self._CI_RESPONSE})
+
+    def test_code_review_pipeline_completes(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["ok"] is True
+
+    def test_code_review_pipeline_id_in_artifacts(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["artifacts"]["pipeline_id"] == "code_review"
+        assert response["artifacts"]["compiled_step_count"] == 3
+
+    def test_code_review_summary_present(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        summary = response["artifacts"].get("code_review_summary", "")
+        assert "read-only" in summary
+        assert "no files modified" in summary
+
+    def test_code_review_pipeline_receipt_is_t2(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        receipt = response["artifacts"].get("pipeline_receipt", {})
+        assert receipt.get("capability_id") == "pipeline.code_review"
+        assert receipt.get("risk_tier") == "T2"
+
+    def test_code_review_calls_only_mcp_code_intelligence(self):
+        runner, calls = self._code_review_runner()
+        runner.run(objective="review", target_repo="/tmp/repo", pipeline_id="code_review")
+        tools_called = {tool for tool, _ in calls}
+        assert tools_called == {"mcp_code_intelligence"}
+
+    def test_code_review_no_file_mutation_args(self):
+        runner, calls = self._code_review_runner()
+        runner.run(objective="review", target_repo="/tmp/repo", pipeline_id="code_review")
+        for _tool, args in calls:
+            assert "write" not in str(args).lower()
+            assert "create" not in str(args).lower()
+
+
 class TestPipelineIntegration:
     def test_workflow_runner_sets_pipeline_artifacts(self):
         runner = _make_runner()

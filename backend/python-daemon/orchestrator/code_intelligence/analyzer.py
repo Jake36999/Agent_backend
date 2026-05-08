@@ -90,6 +90,7 @@ class CodeIntelligenceAnalyzer:
                 "node_count": len(graph.nodes),
                 "edge_count": len([e for e in graph.edges if not e.is_external]),
                 "truncated": graph.truncated,
+                "artifacts": {"dependency_graph_mmd": diagram},
             }
         raise CodeIntelligenceError(f"unknown mode: {mode}")
 
@@ -133,6 +134,13 @@ class CodeIntelligenceAnalyzer:
         lang_counts: dict[str, int] = {}
         for e in entries:
             lang_counts[e.language] = lang_counts.get(e.language, 0) + 1
+        total_lines = sum(e.line_count for e in entries)
+        lang_summary = ", ".join(f"{k}:{v}" for k, v in sorted(lang_counts.items(), key=lambda x: -x[1]))
+        artifact_summary = (
+            f"{len(entries)} files, {total_lines:,} lines"
+            + (f" [truncated]" if truncated else "")
+            + (f" | {lang_summary}" if lang_summary else "")
+        )[:2000]
         return {
             "ok": True,
             "mode": "code_map",
@@ -147,10 +155,11 @@ class CodeIntelligenceAnalyzer:
             ],
             "summary": {
                 "total_files": len(entries),
-                "total_lines": sum(e.line_count for e in entries),
+                "total_lines": total_lines,
                 "languages": lang_counts,
             },
             "truncated": truncated,
+            "artifacts": {"code_map_summary": artifact_summary},
         }
 
     def _build_graph(
@@ -192,6 +201,10 @@ class CodeIntelligenceAnalyzer:
         self, root: Path, entries: list[CodeMapEntry], max_edges: int
     ) -> dict[str, Any]:
         graph = self._build_graph(root, entries, max_edges)
+        artifact_summary = (
+            f"{len(graph.nodes)} nodes, {len(graph.edges)} edges"
+            + (" [truncated]" if graph.truncated else "")
+        )[:500]
         return {
             "ok": True,
             "mode": "dependency_graph",
@@ -208,6 +221,7 @@ class CodeIntelligenceAnalyzer:
             "node_count": len(graph.nodes),
             "edge_count": len(graph.edges),
             "truncated": graph.truncated,
+            "artifacts": {"dependency_graph_summary": artifact_summary},
         }
 
     def _repo_context(
@@ -255,4 +269,5 @@ class CodeIntelligenceAnalyzer:
             "context": context,
             "char_count": len(context),
             "truncated": len(context) >= max_chars,
+            "artifacts": {"repo_context_md": context},
         }

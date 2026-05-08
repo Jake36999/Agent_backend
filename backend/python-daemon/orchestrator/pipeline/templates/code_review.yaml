@@ -1,0 +1,40 @@
+pipeline_id: code_review
+version: "0.1.0"
+name: "Read-only Code Review"
+description: "Read-only codebase analysis using code intelligence. No file writes."
+max_steps: 8
+variables:
+  profile: "safe"
+  max_files: "500"
+  max_edges: "500"
+  max_chars: "8000"
+
+steps:
+  - step_id: repo_context
+    tool_name: mcp_code_intelligence
+    description: "Build bounded repository context"
+    args:
+      target_repo: "${target_repo}"
+      mode: "repo_context"
+      max_files: "${max_files}"
+      max_chars: "${max_chars}"
+
+  - step_id: dependency_graph
+    tool_name: mcp_code_intelligence
+    description: "Build dependency graph"
+    depends_on: [repo_context]
+    args:
+      target_repo: "${target_repo}"
+      mode: "dependency_graph"
+      max_files: "${max_files}"
+      max_edges: "${max_edges}"
+
+  - step_id: mermaid
+    tool_name: mcp_code_intelligence
+    description: "Render dependency graph as Mermaid diagram"
+    depends_on: [dependency_graph]
+    args:
+      target_repo: "${target_repo}"
+      mode: "mermaid"
+      max_files: "${max_files}"
+      max_edges: "${max_edges}"

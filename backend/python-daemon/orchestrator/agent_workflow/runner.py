@@ -188,6 +188,8 @@ class WorkflowRunner:
                 state.final_summary = self._success_summary(state)
                 self._attach_round_one_artifacts(state, target_repo)
                 self._record_binding_trace(state, step_outputs)
+                if state.artifacts.get("pipeline_id") == "code_review":
+                    self._attach_code_review_summary(state, step_outputs)
                 self._attach_pipeline_receipt(state, plan, step_outputs)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
@@ -198,6 +200,8 @@ class WorkflowRunner:
         state.final_summary = self._success_summary(state)
         self._attach_round_one_artifacts(state, target_repo)
         self._record_binding_trace(state, step_outputs)
+        if state.artifacts.get("pipeline_id") == "code_review":
+            self._attach_code_review_summary(state, step_outputs)
         self._attach_pipeline_receipt(state, plan, step_outputs)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
@@ -373,6 +377,34 @@ class WorkflowRunner:
                 step_id: list(result.get("artifacts", {}).keys())
                 for step_id, result in step_outputs.items()
             }
+
+    def _attach_code_review_summary(
+        self,
+        state: WorkflowState,
+        step_outputs: dict[str, dict[str, Any]],
+    ) -> None:
+        def _artifact(step_id: str, key: str) -> str:
+            return str(step_outputs.get(step_id, {}).get("artifacts", {}).get(key) or "")
+
+        repo_ctx = _artifact("repo_context", "repo_context_md")
+        graph_summary = _artifact("dependency_graph", "dependency_graph_summary")
+        mmd_present = bool(_artifact("mermaid", "dependency_graph_mmd"))
+
+        parts = [
+            "## Code Review Summary",
+            "",
+            "**Analysis type:** read-only, no files modified",
+            "",
+        ]
+        if repo_ctx:
+            preview = repo_ctx[:500].rstrip()
+            parts += ["### Repository Context", preview, ""]
+        if graph_summary:
+            parts += ["### Dependency Graph", graph_summary, ""]
+        if mmd_present:
+            parts += ["### Mermaid Diagram", "Artifact key: `dependency_graph_mmd`", ""]
+
+        state.artifacts["code_review_summary"] = "\n".join(parts)[:4000]
 
     def _attach_pipeline_receipt(
         self,
