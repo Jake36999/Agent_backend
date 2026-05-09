@@ -385,6 +385,7 @@ class WorkflowRunner:
         target_repo: str,
     ) -> None:
         import json
+        from orchestrator.code_review.artifact_writer import persist_code_review_artifacts
         from orchestrator.code_review.report_builder import build_code_review_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_code_review_report(
@@ -392,12 +393,12 @@ class WorkflowRunner:
             step_outputs=step_outputs,
             pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
         )
-        state.artifacts["architecture_overview_md"] = report.architecture_overview_md
-        state.artifacts["dependency_graph_mmd"] = report.dependency_graph_mmd
-        state.artifacts["code_review_summary_md"] = report.code_review_summary_md
-        state.artifacts["next_actions_yaml"] = report.next_actions_yaml
-        state.artifacts["heuristics_json"] = report.heuristics_json
-        state.artifacts["code_review_report_index"] = json.dumps(report.artifact_index)[:2000]
+        refs = persist_code_review_artifacts(report, state.run_id, self.state_dir)
+        for key, path in refs.items():
+            state.artifacts[key] = path
+        state.artifacts["code_review_report_index"] = json.dumps(
+            {k: k for k in refs},
+        )[:2000]
 
     def _attach_pipeline_receipt(
         self,
