@@ -187,10 +187,18 @@ class TestPipelineReceiptAttachment:
         assert receipt["authorized"] is True
         assert receipt["network_access"] is False
 
-    def test_pipeline_receipt_absent_without_pipeline_id(self):
-        runner = _make_runner()
+    def test_pipeline_receipt_present_without_explicit_pipeline_id(self):
+        """Without explicit pipeline_id, defaults to investigation — receipt still attached."""
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
         _state, response = runner.run(objective="audit", target_repo="/tmp/repo")
-        assert "pipeline_receipt" not in response.get("artifacts", {})
+        receipt = response.get("artifacts", {}).get("pipeline_receipt")
+        assert isinstance(receipt, dict)
+        assert receipt["capability_id"] == "pipeline.investigation"
 
     def test_pipeline_receipt_no_source_path(self):
         runner, _calls = _make_runner_with_capture({
@@ -320,12 +328,13 @@ class TestPipelineIntegration:
         assert artifacts.get("pipeline_id") == "investigation"
         assert artifacts.get("compiled_step_count") == 5
 
-    def test_workflow_runner_without_pipeline_id_omits_pipeline_artifacts(self):
+    def test_workflow_runner_without_pipeline_id_defaults_to_investigation(self):
+        """Without explicit pipeline_id, defaults to investigation pipeline."""
         runner = _make_runner()
         _state, response = runner.run(
             objective="audit codebase",
             target_repo="/tmp/repo",
         )
         artifacts = response.get("artifacts", {})
-        assert "pipeline_id" not in artifacts
-        assert "compiled_step_count" not in artifacts
+        assert artifacts.get("pipeline_id") == "investigation"
+        assert artifacts.get("compiled_step_count") == 5

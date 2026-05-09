@@ -92,10 +92,10 @@ class WorkflowRunner:
         if patch_apply_request is not None:
             return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
+        effective_pipeline_id = pipeline_id if pipeline_id is not None else "investigation"
         plan = self._build_plan(objective, target_repo, profile, pipeline_id=pipeline_id, pipeline_vars=pipeline_vars)
-        if pipeline_id is not None:
-            state.artifacts["pipeline_id"] = pipeline_id
-            state.artifacts["compiled_step_count"] = len(plan)
+        state.artifacts["pipeline_id"] = effective_pipeline_id
+        state.artifacts["compiled_step_count"] = len(plan)
         if len(plan) > self.max_steps:
             state.phase = "FINAL"
             state.final_summary = "Workflow blocked: plan exceeds the configured maximum step count."
@@ -110,7 +110,6 @@ class WorkflowRunner:
 
         state.todos = [self._clone_todo(todo) for todo in plan]
         state_path = state.save(self.state_dir)
-        session_path = ""
         step_outputs: dict[str, dict[str, Any]] = {}
         executor = self.tool_client or self.bridge_client
 
@@ -122,7 +121,7 @@ class WorkflowRunner:
                 if executor is None:
                     executor = TcpBridgeClient()
                 resolved_args, binding_failures = self._resolve_args(
-                    todo["args"], session_path, step_outputs, step_id=todo["id"]
+                    todo["args"], step_outputs, step_id=todo["id"]
                 )
                 if binding_failures:
                     msg = "; ".join(binding_failures)
@@ -179,9 +178,6 @@ class WorkflowRunner:
                 state.final_summary = compact.get("summary", "Workflow blocked.")
                 state_path = state.save(self.state_dir)
                 return state, self._final_response(state, state_path, ok=False, status=str(compact.get("status", "ERROR")))
-
-            if todo["tool_name"] == "mcp_investigation_start":
-                session_path = str(state.artifacts.get("session_path") or session_path)
 
             if todo["tool_name"] == "mcp_investigation_compile_handoff":
                 state.phase = "SYNTHESIZE"
@@ -243,68 +239,19 @@ class WorkflowRunner:
         pipeline_id: str | None = None,
         pipeline_vars: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
-        if pipeline_id is not None and self.pipeline_compiler is not None and self.pipeline_loader is not None:
-            definition = self.pipeline_loader.load(pipeline_id)
+        effective_id = pipeline_id if pipeline_id is not None else "investigation"
+        if self.pipeline_compiler is not None and self.pipeline_loader is not None:
+            definition = self.pipeline_loader.load(effective_id)
             runtime_vars = {
                 "objective": objective,
                 "target_repo": target_repo,
                 "profile": profile,
+                "max_chars": str(self.max_tool_result_chars),
                 **(pipeline_vars or {}),
             }
             return self.pipeline_compiler.compile_to_plan_list(definition, runtime_vars)
 
-        return [
-            {
-                "id": "start_investigation",
-                "status": "pending",
-                "description": "Create a Tool Assist session",
-                "tool_name": "mcp_investigation_start",
-                "args": {
-                    "objective": objective,
-                    "target_repo": target_repo,
-                    "profile": profile,
-                },
-            },
-            {
-                "id": "filemap",
-                "status": "pending",
-                "description": "Build the file map for the investigation session",
-                "tool_name": "mcp_investigation_filemap",
-                "args": {
-                    "session_path": "${session_path}",
-                    "profile": profile,
-                },
-            },
-            {
-                "id": "validate_manifest",
-                "status": "pending",
-                "description": "Validate the manifest output",
-                "tool_name": "mcp_investigation_validate_manifest",
-                "args": {
-                    "session_path": "${session_path}",
-                },
-            },
-            {
-                "id": "read_report",
-                "status": "pending",
-                "description": "Read a bounded report preview",
-                "tool_name": "mcp_investigation_read_report",
-                "args": {
-                    "session_path": "${session_path}",
-                    "artifact_key": "manifest_doctor_md",
-                    "max_chars": self.max_tool_result_chars,
-                },
-            },
-            {
-                "id": "compile_handoff",
-                "status": "pending",
-                "description": "Compile the final handoff artifacts",
-                "tool_name": "mcp_investigation_compile_handoff",
-                "args": {
-                    "session_path": "${session_path}",
-                },
-            },
-        ]
+        raise RuntimeError("pipeline_compiler and pipeline_loader are required")
 
     def _clone_todo(self, todo: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -343,7 +290,6 @@ class WorkflowRunner:
     def _resolve_args(
         self,
         args: dict[str, Any],
-        session_path: str,
         step_outputs: dict[str, dict[str, Any]] | None = None,
         *,
         step_id: str = "",
@@ -361,8 +307,6 @@ class WorkflowRunner:
                     resolved[key] = None
                 else:
                     resolved[key] = result
-            elif value == "${session_path}":
-                resolved[key] = session_path  # legacy inline plan path (no pipeline_id)
             else:
                 resolved[key] = value
         return resolved, failures

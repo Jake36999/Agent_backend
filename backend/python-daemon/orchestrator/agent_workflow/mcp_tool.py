@@ -238,9 +238,6 @@ def run_agent_workflow(
         skill_registry_root=skill_registry_root,
     )
 
-    pipeline_compiler_inst = pipeline_compiler if pipeline_id else None
-    pipeline_loader_inst = pipeline_loader if pipeline_id else None
-
     runner = WorkflowRunner(
         bridge_client=bridge_client,
         tool_client=tool_client,
@@ -254,8 +251,8 @@ def run_agent_workflow(
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
         patch_apply=patch_apply,
-        pipeline_compiler=pipeline_compiler_inst,
-        pipeline_loader=pipeline_loader_inst,
+        pipeline_compiler=pipeline_compiler or PipelineCompiler(),
+        pipeline_loader=pipeline_loader or PipelineLoader(),
     )
     try:
         _, response = runner.run(
