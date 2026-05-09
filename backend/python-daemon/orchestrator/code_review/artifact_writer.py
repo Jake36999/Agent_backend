@@ -37,3 +37,17 @@ def persist_code_review_artifacts(
         refs[key] = str(dest)
 
     return refs
+
+
+def persist_draft_review(
+    draft: str,
+    run_id: str,
+    state_dir: Path,
+) -> str:
+    """Write the model-assisted draft review and return its absolute path."""
+    artifact_dir = state_dir / run_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    encoded = draft.encode("utf-8")[:_MAX_ARTIFACT_BYTES]
+    dest = artifact_dir / "review_draft.md"
+    dest.write_bytes(encoded)
+    return str(dest)
