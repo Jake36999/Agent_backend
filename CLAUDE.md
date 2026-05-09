@@ -102,7 +102,7 @@ Key constraints:
 - Runtime binding reads from compacted step outputs (`step_outputs[step_id]["artifacts"][key]`).
 - Only **shallow paths** are allowed: `artifacts.key`, `result.key`, `status.key`, etc. Deep paths (two+ dots) are rejected at load time.
 - A missing binding value produces `POLICY_BLOCK` / `binding_resolution_failed` — the executor is never called with an unresolved sentinel.
-- `${session_path}` is retained for backward compatibility in `patch_plan.yaml` but deprecated — remove when that template is migrated.
+- All pipeline templates use `bind:` syntax. The legacy `${variable}` syntax is only used in the inline fallback plan (no `pipeline_id`).
 
 See `docs/phase-2b-output-bindings.md` for the full design record.
 

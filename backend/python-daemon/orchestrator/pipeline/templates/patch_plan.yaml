@@ -1,5 +1,5 @@
 pipeline_id: patch_plan
-version: "1.0.0"
+version: "1.1.0"
 name: "Patch Planning Workflow"
 description: "Investigation-to-patch pipeline: investigate, analyze candidates, then plan patch."
 max_steps: 12
@@ -10,6 +10,8 @@ steps:
   - step_id: start_investigation
     tool_name: mcp_investigation_start
     description: "Create a Tool Assist session for the patch target"
+    outputs:
+      session_path: artifacts.session_path
     args:
       objective: "${objective}"
       target_repo: "${target_repo}"
@@ -20,28 +22,40 @@ steps:
     description: "Build file map for candidate analysis"
     depends_on: [start_investigation]
     args:
-      session_path: "${session_path}"
+      session_path:
+        bind:
+          from_step: start_investigation
+          path: artifacts.session_path
       profile: "${profile}"
 
   - step_id: validate_manifest
     tool_name: mcp_investigation_validate_manifest
     description: "Validate the investigation manifest"
-    depends_on: [filemap]
+    depends_on: [filemap, start_investigation]
     args:
-      session_path: "${session_path}"
+      session_path:
+        bind:
+          from_step: start_investigation
+          path: artifacts.session_path
 
   - step_id: read_manifest
     tool_name: mcp_investigation_read_report
     description: "Read the manifest for candidate scoring"
-    depends_on: [validate_manifest]
+    depends_on: [validate_manifest, start_investigation]
     args:
-      session_path: "${session_path}"
+      session_path:
+        bind:
+          from_step: start_investigation
+          path: artifacts.session_path
       artifact_key: "manifest_csv"
       max_chars: 4000
 
   - step_id: compile_handoff
     tool_name: mcp_investigation_compile_handoff
     description: "Compile investigation handoff for patch planning"
-    depends_on: [read_manifest]
+    depends_on: [read_manifest, start_investigation]
     args:
-      session_path: "${session_path}"
+      session_path:
+        bind:
+          from_step: start_investigation
+          path: artifacts.session_path

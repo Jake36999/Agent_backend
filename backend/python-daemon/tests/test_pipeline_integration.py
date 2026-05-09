@@ -150,8 +150,8 @@ class TestPipelineOutputBindings:
         assert "start_investigation" in trace
         assert isinstance(trace["start_investigation"], list)
 
-    def test_patch_plan_backward_compat_session_path(self):
-        """patch_plan.yaml uses ${session_path} legacy syntax — must still resolve."""
+    def test_patch_plan_session_path_flows_via_binding(self):
+        """patch_plan.yaml uses bind: syntax — session_path resolved from start_investigation."""
         runner, calls = _make_runner_with_capture({
             "mcp_investigation_start": {
                 "ok": True, "status": "COMPLETE", "summary": "started",

@@ -362,7 +362,7 @@ class WorkflowRunner:
                 else:
                     resolved[key] = result
             elif value == "${session_path}":
-                resolved[key] = session_path  # backward compat for patch_plan.yaml
+                resolved[key] = session_path  # legacy inline plan path (no pipeline_id)
             else:
                 resolved[key] = value
         return resolved, failures
