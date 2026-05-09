@@ -493,14 +493,28 @@ class ToolAdapters:
             if tool_name == "mcp_code_intelligence":
                 if self.code_intelligence is None:
                     raise AdapterFailure("code intelligence analyzer is not configured")
-                return self.code_intelligence.analyze(
+                mode = str(args["mode"])
+                result = self.code_intelligence.analyze(
                     str(args["target_repo"]),
-                    str(args["mode"]),
+                    mode,
                     max_files=int(args.get("max_files", 500)),
                     max_edges=int(args.get("max_edges", 500)),
                     max_chars=int(args.get("max_chars", 8000)),
                     focus_paths=list(args["focus_paths"]) if args.get("focus_paths") else None,
                 )
+                from .capabilities.receipt import build_receipt, compact_receipt
+                receipt = build_receipt(
+                    capability_id=f"code_intelligence.{mode}",
+                    capability_type="adapter",
+                    risk_tier="T1",
+                    status="OK" if result.get("ok") else "ERROR",
+                    authorized=True,
+                    network_access=False,
+                    writes_external_state=False,
+                    summary=f"Executed read-only {mode} analysis.",
+                )
+                result["capability_receipt"] = compact_receipt(receipt)
+                return result
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:
             raise AdapterFailure(f"missing required argument: {exc}") from exc

@@ -166,6 +166,144 @@ class TestPipelineOutputBindings:
         assert filemap_args["session_path"] == "/tmp/patch_session"
 
 
+class TestPipelineReceiptAttachment:
+    def test_pipeline_receipt_present_on_success(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True
+        receipt = response.get("artifacts", {}).get("pipeline_receipt")
+        assert isinstance(receipt, dict), "pipeline_receipt must be a dict"
+        assert receipt["operation"] == "capability.execute"
+        assert receipt["capability_id"] == "pipeline.investigation"
+        assert receipt["capability_type"] == "pipeline"
+        assert receipt["risk_tier"] == "T2"
+        assert receipt["authorized"] is True
+        assert receipt["network_access"] is False
+
+    def test_pipeline_receipt_absent_without_pipeline_id(self):
+        runner = _make_runner()
+        _state, response = runner.run(objective="audit", target_repo="/tmp/repo")
+        assert "pipeline_receipt" not in response.get("artifacts", {})
+
+    def test_pipeline_receipt_no_source_path(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        receipt_str = str(response.get("artifacts", {}).get("pipeline_receipt", {}))
+        assert "source_path" not in receipt_str
+        assert "allowed_roots" not in receipt_str
+
+    def test_pipeline_receipt_artifact_refs_bounded(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {f"key_{i}": f"val_{i}" for i in range(25)},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        receipt = response.get("artifacts", {}).get("pipeline_receipt") or {}
+        assert len(receipt.get("artifact_refs", [])) <= 20
+
+
+class TestCodeReviewPipeline:
+    _CI_RESPONSE = {
+        "ok": True, "status": "COMPLETE", "summary": "analyzed",
+        "artifacts": {
+            "repo_context_md": "# Repo Context\n\n10 files, 1000 lines",
+            "dependency_graph_summary": "5 nodes, 8 edges",
+            "dependency_graph_mmd": "graph TD\n  a --> b",
+            "code_map_summary": "10 files",
+        },
+    }
+
+    def _code_review_runner(self):
+        return _make_runner_with_capture({"mcp_code_intelligence": self._CI_RESPONSE})
+
+    def test_code_review_pipeline_completes(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["ok"] is True
+
+    def test_code_review_pipeline_id_in_artifacts(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["artifacts"]["pipeline_id"] == "code_review"
+        assert response["artifacts"]["compiled_step_count"] == 3
+
+    def test_code_review_report_artifacts_present(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        artifacts = response["artifacts"]
+        assert "architecture_overview_md" in artifacts
+        assert "dependency_graph_mmd" in artifacts
+        assert "code_review_summary_md" in artifacts
+        assert "next_actions_yaml" in artifacts
+        assert "code_review_report_index" in artifacts
+
+    def test_code_review_summary_md_content(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        summary = response["artifacts"].get("code_review_summary_md", "")
+        assert "read-only" in summary.lower() or "no files modified" in summary.lower()
+
+    def test_code_review_next_actions_deterministic(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        yaml_text = response["artifacts"].get("next_actions_yaml", "")
+        assert "suggested_followups" in yaml_text
+        assert "candidate follow-up" in yaml_text
+        # must not contain LLM critique language
+        for forbidden in ("vulnerability", "bug", "security risk", "severity"):
+            assert forbidden not in yaml_text.lower()
+
+    def test_code_review_pipeline_receipt_is_t2(self):
+        runner, _calls = self._code_review_runner()
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        receipt = response["artifacts"].get("pipeline_receipt", {})
+        assert receipt.get("capability_id") == "pipeline.code_review"
+        assert receipt.get("risk_tier") == "T2"
+
+    def test_code_review_calls_only_mcp_code_intelligence(self):
+        runner, calls = self._code_review_runner()
+        runner.run(objective="review", target_repo="/tmp/repo", pipeline_id="code_review")
+        tools_called = {tool for tool, _ in calls}
+        assert tools_called == {"mcp_code_intelligence"}
+
+    def test_code_review_no_file_mutation_args(self):
+        runner, calls = self._code_review_runner()
+        runner.run(objective="review", target_repo="/tmp/repo", pipeline_id="code_review")
+        for _tool, args in calls:
+            assert "write" not in str(args).lower()
+            assert "create" not in str(args).lower()
+
+
 class TestPipelineIntegration:
     def test_workflow_runner_sets_pipeline_artifacts(self):
         runner = _make_runner()

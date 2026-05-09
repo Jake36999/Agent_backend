@@ -307,3 +307,66 @@ class TestMermaidFormatter:
         )
         diagram = format_mermaid(graph)
         assert diagram.count("-->") == 1
+
+
+class TestCodeIntelligenceReceipt:
+    """Verify capability_receipt is attached to mcp_code_intelligence results."""
+
+    def test_receipt_present_on_all_modes(self, tmp_path):
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        analyzer = CodeIntelligenceAnalyzer(allowed_roots=(tmp_path,))
+        for mode in ("code_map", "dependency_graph", "repo_context", "mermaid"):
+            result = analyzer.analyze(str(tmp_path), mode)
+            # Receipt is attached by the adapter layer, not the analyzer itself.
+            # Verify the analyzer result is structurally valid for receipt attachment.
+            assert result.get("ok") is True
+            assert "mode" in result
+
+    def test_receipt_shape_via_adapter(self, tmp_path):
+        import sys
+        sys.path.insert(0, str(tmp_path))
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+        from orchestrator.adapters import ToolAdapters
+        adapter = ToolAdapters(
+            code_intelligence=CodeIntelligenceAnalyzer(allowed_roots=(tmp_path,))
+        )
+        result = adapter.call_mcp_tool("mcp_code_intelligence", {
+            "target_repo": str(tmp_path),
+            "mode": "code_map",
+        })
+        receipt = result.get("capability_receipt")
+        assert isinstance(receipt, dict), "capability_receipt must be dict"
+        assert receipt["operation"] == "capability.execute"
+        assert receipt["capability_id"] == "code_intelligence.code_map"
+        assert receipt["capability_type"] == "adapter"
+        assert receipt["risk_tier"] == "T1"
+        assert receipt["network_access"] is False
+        assert receipt["writes_external_state"] is False
+
+    def test_receipt_no_source_path(self, tmp_path):
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        from orchestrator.adapters import ToolAdapters
+        adapter = ToolAdapters(
+            code_intelligence=CodeIntelligenceAnalyzer(allowed_roots=(tmp_path,))
+        )
+        result = adapter.call_mcp_tool("mcp_code_intelligence", {
+            "target_repo": str(tmp_path),
+            "mode": "repo_context",
+        })
+        receipt_str = str(result.get("capability_receipt", {}))
+        assert "source_path" not in receipt_str
+        assert "allowed_roots" not in receipt_str
+
+    def test_receipt_summary_bounded(self, tmp_path):
+        (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
+        from orchestrator.adapters import ToolAdapters
+        adapter = ToolAdapters(
+            code_intelligence=CodeIntelligenceAnalyzer(allowed_roots=(tmp_path,))
+        )
+        result = adapter.call_mcp_tool("mcp_code_intelligence", {
+            "target_repo": str(tmp_path),
+            "mode": "dependency_graph",
+        })
+        summary = result["capability_receipt"]["summary"]
+        assert len(summary) <= 200

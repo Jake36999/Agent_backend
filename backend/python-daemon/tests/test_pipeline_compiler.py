@@ -250,8 +250,27 @@ class TestPipelineLoader:
     def test_active_templates_do_not_include_examples(self):
         loader = PipelineLoader()
         templates = loader.list_templates()
-        assert "code_review" not in templates
+        # code_review is now active; deep_research and other examples remain inactive
+        assert "code_review" in templates
         assert "deep_research" not in templates
+
+    def test_code_review_template_loads_and_compiles(self):
+        from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
+        loader = PipelineLoader()
+        compiler = PipelineCompiler(allowed_tools=frozenset(ALLOWED_TOOLS))
+        definition = loader.load("code_review")
+        plan = compiler.compile_to_plan_list(
+            definition,
+            runtime_vars={"objective": "review", "target_repo": "/tmp/repo"},
+        )
+        step_ids = [t["id"] for t in plan]
+        assert "repo_context" in step_ids
+        assert "dependency_graph" in step_ids
+        assert "mermaid" in step_ids
+
+    def test_code_review_in_active_pipelines(self):
+        from orchestrator.pipeline.loader import ACTIVE_PIPELINES
+        assert "code_review" in ACTIVE_PIPELINES
 
     def test_investigation_uses_only_allowed_tools(self):
         from orchestrator.agent_workflow.policies import ALLOWED_TOOLS

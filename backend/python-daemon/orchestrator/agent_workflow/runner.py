@@ -188,6 +188,9 @@ class WorkflowRunner:
                 state.final_summary = self._success_summary(state)
                 self._attach_round_one_artifacts(state, target_repo)
                 self._record_binding_trace(state, step_outputs)
+                self._attach_pipeline_receipt(state, plan, step_outputs)
+                if state.artifacts.get("pipeline_id") == "code_review":
+                    self._attach_code_review_summary(state, step_outputs, target_repo)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -197,6 +200,9 @@ class WorkflowRunner:
         state.final_summary = self._success_summary(state)
         self._attach_round_one_artifacts(state, target_repo)
         self._record_binding_trace(state, step_outputs)
+        self._attach_pipeline_receipt(state, plan, step_outputs)
+        if state.artifacts.get("pipeline_id") == "code_review":
+            self._attach_code_review_summary(state, step_outputs, target_repo)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -371,6 +377,56 @@ class WorkflowRunner:
                 step_id: list(result.get("artifacts", {}).keys())
                 for step_id, result in step_outputs.items()
             }
+
+    def _attach_code_review_summary(
+        self,
+        state: WorkflowState,
+        step_outputs: dict[str, dict[str, Any]],
+        target_repo: str,
+    ) -> None:
+        import json
+        from orchestrator.code_review.report_builder import build_code_review_report
+        pipeline_receipt = state.artifacts.get("pipeline_receipt")
+        report = build_code_review_report(
+            target_repo=target_repo,
+            step_outputs=step_outputs,
+            pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
+        )
+        state.artifacts["architecture_overview_md"] = report.architecture_overview_md
+        state.artifacts["dependency_graph_mmd"] = report.dependency_graph_mmd
+        state.artifacts["code_review_summary_md"] = report.code_review_summary_md
+        state.artifacts["next_actions_yaml"] = report.next_actions_yaml
+        state.artifacts["heuristics_json"] = report.heuristics_json
+        state.artifacts["code_review_report_index"] = json.dumps(report.artifact_index)[:2000]
+
+    def _attach_pipeline_receipt(
+        self,
+        state: WorkflowState,
+        plan: list[dict[str, Any]],
+        step_outputs: dict[str, dict[str, Any]],
+    ) -> None:
+        pipeline_id = state.artifacts.get("pipeline_id")
+        if not pipeline_id:
+            return
+        from orchestrator.capabilities.receipt import build_receipt, compact_receipt
+        artifact_refs = [
+            key
+            for result in step_outputs.values()
+            for key in result.get("artifacts", {}).keys()
+        ][:20]
+        completed = sum(1 for r in step_outputs.values() if r.get("ok"))
+        receipt = build_receipt(
+            capability_id=f"pipeline.{pipeline_id}",
+            capability_type="pipeline",
+            risk_tier="T2",
+            status="OK",
+            authorized=True,
+            network_access=False,
+            writes_external_state=True,
+            artifact_refs=artifact_refs,
+            summary=f"Executed {pipeline_id} pipeline ({len(plan)} steps, {completed} complete).",
+        )
+        state.artifacts["pipeline_receipt"] = compact_receipt(receipt)
 
     def _merge_artifacts(self, merged: dict[str, str], artifacts: dict[str, Any]) -> None:
         for key, value in artifacts.items():
