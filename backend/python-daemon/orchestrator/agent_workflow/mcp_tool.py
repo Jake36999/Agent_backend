@@ -216,6 +216,7 @@ def run_agent_workflow(
     pipeline_vars: dict[str, str] | None = None,
     pipeline_compiler: PipelineCompiler | None = None,
     pipeline_loader: PipelineLoader | None = None,
+    capability_registry: Any | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -253,6 +254,7 @@ def run_agent_workflow(
         patch_apply=patch_apply,
         pipeline_compiler=pipeline_compiler or PipelineCompiler(),
         pipeline_loader=pipeline_loader or PipelineLoader(),
+        capability_registry=capability_registry,
     )
     try:
         _, response = runner.run(

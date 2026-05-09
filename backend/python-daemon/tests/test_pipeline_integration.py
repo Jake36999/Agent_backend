@@ -7,6 +7,8 @@ import pytest
 from orchestrator.agent_workflow.compaction import _compact_error, compact_tool_result
 from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
 from orchestrator.agent_workflow.runner import WorkflowRunner
+from orchestrator.capabilities.models import CapabilityManifest, CapabilityType
+from orchestrator.capabilities.policy import check_pipeline_policy, CapabilityPolicyError
 from orchestrator.pipeline.compiler import PipelineCompiler
 from orchestrator.pipeline.loader import PipelineLoader
 
@@ -338,3 +340,117 @@ class TestPipelineIntegration:
         artifacts = response.get("artifacts", {})
         assert artifacts.get("pipeline_id") == "investigation"
         assert artifacts.get("compiled_step_count") == 5
+
+
+def _make_manifest(capability_id: str, *, status: str = "verified", risk_tier: str = "T2") -> CapabilityManifest:
+    return CapabilityManifest(
+        capability_id=capability_id,
+        capability_type=CapabilityType.PIPELINE_TEMPLATE,
+        version="1.0.0",
+        name=capability_id,
+        description="test",
+        risk_tier=risk_tier,
+        status=status,
+    )
+
+
+class _FakeRegistry:
+    """Minimal registry stub for policy tests — no SQLite needed."""
+
+    def __init__(self, manifests: dict[str, CapabilityManifest] | None = None):
+        self._manifests = manifests or {}
+
+    def get(self, capability_id: str) -> CapabilityManifest | None:
+        return self._manifests.get(capability_id)
+
+
+class TestCapabilityPolicyEnforcement:
+    def test_quarantined_pipeline_blocked(self):
+        registry = _FakeRegistry({
+            "pipeline_template.investigation": _make_manifest(
+                "pipeline_template.investigation", status="quarantined"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is not None
+        assert "quarantined" in error
+
+    def test_disabled_pipeline_blocked(self):
+        registry = _FakeRegistry({
+            "pipeline_template.investigation": _make_manifest(
+                "pipeline_template.investigation", status="disabled"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is not None
+        assert "disabled" in error
+
+    def test_verified_pipeline_allowed(self):
+        registry = _FakeRegistry({
+            "pipeline_template.investigation": _make_manifest(
+                "pipeline_template.investigation", status="verified"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is None
+
+    def test_no_registry_means_no_enforcement(self):
+        error = check_pipeline_policy("investigation", None)
+        assert error is None
+
+    def test_unknown_pipeline_allowed(self):
+        registry = _FakeRegistry({})
+        error = check_pipeline_policy("nonexistent", registry)
+        assert error is None
+
+    def test_runner_blocks_quarantined_pipeline(self):
+        registry = _FakeRegistry({
+            "pipeline_template.investigation": _make_manifest(
+                "pipeline_template.investigation", status="quarantined"
+            ),
+        })
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        runner.capability_registry = registry
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is False
+        assert response["status"] == "POLICY_BLOCK"
+        err = response.get("error", {})
+        assert err.get("code") == "capability_policy_block"
+        assert "quarantined" in err.get("message", "")
+
+    def test_runner_allows_verified_pipeline(self):
+        registry = _FakeRegistry({
+            "pipeline_template.investigation": _make_manifest(
+                "pipeline_template.investigation", status="verified"
+            ),
+        })
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        runner.capability_registry = registry
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True
+
+    def test_runner_no_registry_passes(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True

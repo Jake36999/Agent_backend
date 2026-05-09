@@ -14,6 +14,8 @@ from orchestrator.patching.apply import PatchApplyService
 from orchestrator.pipeline.compiler import PipelineCompiler
 from orchestrator.pipeline.loader import PipelineLoader
 
+from orchestrator.capabilities.policy import check_pipeline_policy
+
 from .bridge_client import TcpBridgeClient
 from .compaction import compact_tool_result
 from .policies import reasoning_policy
@@ -39,6 +41,7 @@ class WorkflowRunner:
         patch_apply: PatchApplyService | None = None,
         pipeline_compiler: PipelineCompiler | None = None,
         pipeline_loader: PipelineLoader | None = None,
+        capability_registry: Any | None = None,
     ) -> None:
         self.lm_client = lm_client
         self.bridge_client = bridge_client
@@ -55,6 +58,7 @@ class WorkflowRunner:
         self.patch_apply = patch_apply
         self.pipeline_compiler = pipeline_compiler
         self.pipeline_loader = pipeline_loader
+        self.capability_registry = capability_registry
 
     def run(
         self,
@@ -93,6 +97,15 @@ class WorkflowRunner:
             return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
         effective_pipeline_id = pipeline_id if pipeline_id is not None else "investigation"
+
+        policy_error = check_pipeline_policy(effective_pipeline_id, self.capability_registry)
+        if policy_error is not None:
+            state.phase = "FINAL"
+            state.final_summary = policy_error
+            state.errors.append({"code": "capability_policy_block", "message": policy_error})
+            state_path = state.save(self.state_dir)
+            return state, self._final_response(state, state_path, ok=False, status="POLICY_BLOCK")
+
         plan = self._build_plan(objective, target_repo, profile, pipeline_id=pipeline_id, pipeline_vars=pipeline_vars)
         state.artifacts["pipeline_id"] = effective_pipeline_id
         state.artifacts["compiled_step_count"] = len(plan)
