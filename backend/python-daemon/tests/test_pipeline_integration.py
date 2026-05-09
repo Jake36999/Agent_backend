@@ -255,10 +255,11 @@ class TestCodeReviewPipeline:
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
         artifacts = response["artifacts"]
-        assert "architecture_overview_md" in artifacts
-        assert "dependency_graph_mmd" in artifacts
-        assert "code_review_summary_md" in artifacts
-        assert "next_actions_yaml" in artifacts
+        for key in ("architecture_overview_md", "dependency_graph_mmd",
+                     "code_review_summary_md", "next_actions_yaml", "heuristics_json"):
+            assert key in artifacts, f"missing artifact ref: {key}"
+            from pathlib import Path
+            assert Path(artifacts[key]).exists(), f"artifact file missing: {artifacts[key]}"
         assert "code_review_report_index" in artifacts
 
     def test_code_review_summary_md_content(self):
@@ -266,7 +267,9 @@ class TestCodeReviewPipeline:
         _state, response = runner.run(
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
-        summary = response["artifacts"].get("code_review_summary_md", "")
+        path = response["artifacts"].get("code_review_summary_md", "")
+        from pathlib import Path
+        summary = Path(path).read_text(encoding="utf-8") if Path(path).exists() else path
         assert "read-only" in summary.lower() or "no files modified" in summary.lower()
 
     def test_code_review_next_actions_deterministic(self):
@@ -274,10 +277,11 @@ class TestCodeReviewPipeline:
         _state, response = runner.run(
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
-        yaml_text = response["artifacts"].get("next_actions_yaml", "")
+        path = response["artifacts"].get("next_actions_yaml", "")
+        from pathlib import Path
+        yaml_text = Path(path).read_text(encoding="utf-8") if Path(path).exists() else path
         assert "suggested_followups" in yaml_text
         assert "candidate follow-up" in yaml_text
-        # must not contain LLM critique language
         for forbidden in ("vulnerability", "bug", "security risk", "severity"):
             assert forbidden not in yaml_text.lower()
 
