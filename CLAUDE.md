@@ -76,7 +76,7 @@ Tables use `STRICT, WITHOUT ROWID` where appropriate. Foreign keys are enforced.
 - **Capability Registry** (`capabilities/`): SQLite-backed registry for backend capabilities (adapters, sandbox providers, indexers, pipeline templates, integration providers). Separate from SkillRegistry — skills stay in their own registry.
 - **SkillRegistry** (`skills/`): Loads skill manifests from `agent_backend_skill_registry/skills/*/skill.json`. Selection scoring uses trigger phrases, capability match, and intent keywords.
 - **Active Partition**: Tracks which LM Studio conversation is in focus. Scopes memory commits and searches to a project.
-- **Code Review Artifacts** (`code_review/`): `artifact_writer.py` persists report files to `{state_dir}/{run_id}/` (bounded at 64 KB per file). `review_drafter.py` contains an LM-assisted drafter module but is **not wired into the runner** — deferred until model-assisted review is explicitly enabled.
+- **Code Review Artifacts** (`code_review/`): `artifact_writer.py` persists report files to `{state_dir}/{run_id}/` (bounded at 64 KB per file, sha256 manifest written alongside). `review_drafter.py` contains an LM-assisted drafter module but is **not wired into the runner**. The policy gate is `is_drafting_enabled()` in `drafting_policy.py`, gated on `ALETHEIA_ENABLE_REVIEW_DRAFTING=true` (default: false). The stub capability descriptor `REVIEW_DRAFTING_CAPABILITY` documents it as T3/requires_approval/disabled.
 - **Bridge Security** (`bridge_server.py`): HMAC-SHA256 with nonce dedup (4096-entry LRU) and 300s timestamp tolerance.
 
 ## Pipeline Output Bindings (Phase 2B)
