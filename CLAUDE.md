@@ -103,7 +103,7 @@ Key constraints:
 - Runtime binding reads from compacted step outputs (`step_outputs[step_id]["artifacts"][key]`).
 - Only **shallow paths** are allowed: `artifacts.key`, `result.key`, `status.key`, etc. Deep paths (two+ dots) are rejected at load time.
 - A missing binding value produces `POLICY_BLOCK` / `binding_resolution_failed` — the executor is never called with an unresolved sentinel.
-- All pipeline templates use `bind:` syntax. The legacy `${variable}` syntax is removed.
+- All pipeline templates use `bind:` syntax for step-to-step data flow. Runtime template variables (`${target_repo}`, `${objective}`, etc.) are still substituted by the compiler from `pipeline_vars`. The removed feature was the legacy step-linking `${session_path}` pattern, which is now fully replaced by `bind:`.
 - Every workflow run routes through the pipeline compiler. When no `pipeline_id` is provided, the default is `"investigation"`. The response always includes `pipeline_id` and `compiled_step_count` in artifacts.
 
 See `docs/phase-2b-output-bindings.md` for the full design record.

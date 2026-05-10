@@ -169,3 +169,21 @@ class TestCapabilityPolicy:
     def test_writes_external_with_approval_passes(self):
         manifest = _sample_manifest(writes_external_state=True, requires_approval=True)
         enforce_capability_policy(manifest)
+
+    def test_t4_without_approval_raises(self):
+        manifest = _sample_manifest(risk_tier="T4", requires_approval=False)
+        with pytest.raises(CapabilityPolicyError, match="requires_approval"):
+            enforce_capability_policy(manifest)
+
+    def test_t5_without_approval_raises(self):
+        manifest = _sample_manifest(risk_tier="T5", requires_approval=False)
+        with pytest.raises(CapabilityPolicyError, match="requires_approval"):
+            enforce_capability_policy(manifest)
+
+    def test_t4_with_approval_passes(self):
+        manifest = _sample_manifest(risk_tier="T4", requires_approval=True)
+        enforce_capability_policy(manifest)
+
+    def test_t2_without_approval_passes(self):
+        manifest = _sample_manifest(risk_tier="T2", requires_approval=False)
+        enforce_capability_policy(manifest)
