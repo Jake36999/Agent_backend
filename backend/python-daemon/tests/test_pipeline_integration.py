@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.agent_workflow.compaction import _compact_error, compact_tool_result
+from orchestrator.agent_workflow.mcp_tool import run_agent_workflow
 from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
 from orchestrator.agent_workflow.runner import WorkflowRunner
 from orchestrator.capabilities.models import CapabilityManifest, CapabilityType
@@ -342,6 +343,22 @@ class TestPipelineIntegration:
         assert artifacts.get("compiled_step_count") == 5
 
 
+class TestCompilerFallbackRestriction:
+    def test_run_agent_workflow_fallback_compiler_has_allowed_tools(self, tmp_path):
+        """run_agent_workflow must use a restricted compiler even without injection."""
+        result = run_agent_workflow(
+            objective="audit",
+            target_repo=str(tmp_path),
+            allowed_roots=(tmp_path,),
+            tool_client=MagicMock(call_tool=MagicMock(return_value={
+                "ok": True, "status": "COMPLETE", "summary": "ok",
+                "artifacts": {"session_path": "/tmp/s"},
+            })),
+        )
+        assert result["ok"] is True
+        assert result["artifacts"]["pipeline_id"] == "investigation"
+
+
 def _make_manifest(capability_id: str, *, status: str = "verified", risk_tier: str = "T2") -> CapabilityManifest:
     return CapabilityManifest(
         capability_id=capability_id,
@@ -367,8 +384,8 @@ class _FakeRegistry:
 class TestCapabilityPolicyEnforcement:
     def test_quarantined_pipeline_blocked(self):
         registry = _FakeRegistry({
-            "pipeline_template.investigation": _make_manifest(
-                "pipeline_template.investigation", status="quarantined"
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="quarantined"
             ),
         })
         error = check_pipeline_policy("investigation", registry)
@@ -377,8 +394,8 @@ class TestCapabilityPolicyEnforcement:
 
     def test_disabled_pipeline_blocked(self):
         registry = _FakeRegistry({
-            "pipeline_template.investigation": _make_manifest(
-                "pipeline_template.investigation", status="disabled"
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="disabled"
             ),
         })
         error = check_pipeline_policy("investigation", registry)
@@ -387,8 +404,8 @@ class TestCapabilityPolicyEnforcement:
 
     def test_verified_pipeline_allowed(self):
         registry = _FakeRegistry({
-            "pipeline_template.investigation": _make_manifest(
-                "pipeline_template.investigation", status="verified"
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="verified"
             ),
         })
         error = check_pipeline_policy("investigation", registry)
@@ -405,8 +422,8 @@ class TestCapabilityPolicyEnforcement:
 
     def test_runner_blocks_quarantined_pipeline(self):
         registry = _FakeRegistry({
-            "pipeline_template.investigation": _make_manifest(
-                "pipeline_template.investigation", status="quarantined"
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="quarantined"
             ),
         })
         runner, _calls = _make_runner_with_capture({
@@ -427,8 +444,8 @@ class TestCapabilityPolicyEnforcement:
 
     def test_runner_allows_verified_pipeline(self):
         registry = _FakeRegistry({
-            "pipeline_template.investigation": _make_manifest(
-                "pipeline_template.investigation", status="verified"
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="verified"
             ),
         })
         runner, _calls = _make_runner_with_capture({

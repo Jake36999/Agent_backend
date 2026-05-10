@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .bridge_client import TcpBridgeClient
+from .policies import ALLOWED_TOOLS
 from .runner import WorkflowRunner
 from .state import default_state_dir
 from orchestrator.active_partition.service import ActivePartitionService
@@ -252,7 +253,7 @@ def run_agent_workflow(
         conversation_summary_ingestor=conversation_summary_ingestor,
         candidate_analysis=candidate_analysis,
         patch_apply=patch_apply,
-        pipeline_compiler=pipeline_compiler or PipelineCompiler(),
+        pipeline_compiler=pipeline_compiler or PipelineCompiler(allowed_tools=frozenset(ALLOWED_TOOLS)),
         pipeline_loader=pipeline_loader or PipelineLoader(),
         capability_registry=capability_registry,
     )

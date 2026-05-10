@@ -76,6 +76,7 @@ Tables use `STRICT, WITHOUT ROWID` where appropriate. Foreign keys are enforced.
 - **Capability Registry** (`capabilities/`): SQLite-backed registry for backend capabilities (adapters, sandbox providers, indexers, pipeline templates, integration providers). Separate from SkillRegistry — skills stay in their own registry.
 - **SkillRegistry** (`skills/`): Loads skill manifests from `agent_backend_skill_registry/skills/*/skill.json`. Selection scoring uses trigger phrases, capability match, and intent keywords.
 - **Active Partition**: Tracks which LM Studio conversation is in focus. Scopes memory commits and searches to a project.
+- **Code Review Artifacts** (`code_review/`): `artifact_writer.py` persists report files to `{state_dir}/{run_id}/` (bounded at 64 KB per file). `review_drafter.py` contains an LM-assisted drafter module but is **not wired into the runner** — deferred until model-assisted review is explicitly enabled.
 - **Bridge Security** (`bridge_server.py`): HMAC-SHA256 with nonce dedup (4096-entry LRU) and 300s timestamp tolerance.
 
 ## Pipeline Output Bindings (Phase 2B)
@@ -102,7 +103,8 @@ Key constraints:
 - Runtime binding reads from compacted step outputs (`step_outputs[step_id]["artifacts"][key]`).
 - Only **shallow paths** are allowed: `artifacts.key`, `result.key`, `status.key`, etc. Deep paths (two+ dots) are rejected at load time.
 - A missing binding value produces `POLICY_BLOCK` / `binding_resolution_failed` — the executor is never called with an unresolved sentinel.
-- All pipeline templates use `bind:` syntax. The legacy `${variable}` syntax is only used in the inline fallback plan (no `pipeline_id`).
+- All pipeline templates use `bind:` syntax. The legacy `${variable}` syntax is removed.
+- Every workflow run routes through the pipeline compiler. When no `pipeline_id` is provided, the default is `"investigation"`. The response always includes `pipeline_id` and `compiled_step_count` in artifacts.
 
 See `docs/phase-2b-output-bindings.md` for the full design record.
 

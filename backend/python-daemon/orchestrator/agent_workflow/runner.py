@@ -25,7 +25,6 @@ from .state import WorkflowState, default_state_dir, utc_now_iso
 class WorkflowRunner:
     def __init__(
         self,
-        lm_client: Any | None = None,
         bridge_client: TcpBridgeClient | None = None,
         tool_client: Any | None = None,
         allow_ingest: bool = False,
@@ -43,7 +42,6 @@ class WorkflowRunner:
         pipeline_loader: PipelineLoader | None = None,
         capability_registry: Any | None = None,
     ) -> None:
-        self.lm_client = lm_client
         self.bridge_client = bridge_client
         self.tool_client = tool_client
         self.allow_ingest = allow_ingest
@@ -353,22 +351,6 @@ class WorkflowRunner:
         refs = persist_code_review_artifacts(report, state.run_id, self.state_dir)
         for key, path in refs.items():
             state.artifacts[key] = path
-
-        if self.lm_client is not None:
-            from orchestrator.code_review.artifact_writer import persist_draft_review
-            from orchestrator.code_review.review_drafter import draft_review
-            draft = draft_review(
-                lm_client=self.lm_client,
-                architecture_overview=report.architecture_overview_md,
-                code_review_summary=report.code_review_summary_md,
-                heuristics_json=report.heuristics_json,
-                next_actions_yaml=report.next_actions_yaml,
-                target_repo=target_repo,
-            )
-            if draft:
-                draft_path = persist_draft_review(draft, state.run_id, self.state_dir)
-                refs["review_draft_md"] = draft_path
-                state.artifacts["review_draft_md"] = draft_path
 
         state.artifacts["code_review_report_index"] = json.dumps(
             {k: k for k in refs},

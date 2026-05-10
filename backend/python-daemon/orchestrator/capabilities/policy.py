@@ -22,7 +22,7 @@ def check_pipeline_policy(
     """Check policy for a pipeline. Returns an error message if blocked, None if allowed."""
     if registry is None:
         return None
-    capability_id = f"pipeline_template.{pipeline_id}"
+    capability_id = f"pipeline.{pipeline_id}"
     manifest = registry.get(capability_id)
     if manifest is None:
         return None
