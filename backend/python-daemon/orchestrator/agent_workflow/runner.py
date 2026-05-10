@@ -340,7 +340,7 @@ class WorkflowRunner:
         target_repo: str,
     ) -> None:
         import json
-        from orchestrator.code_review.artifact_writer import persist_code_review_artifacts
+        from orchestrator.code_review.artifact_writer import build_report_index, persist_code_review_artifacts
         from orchestrator.code_review.report_builder import build_code_review_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_code_review_report(
@@ -348,12 +348,12 @@ class WorkflowRunner:
             step_outputs=step_outputs,
             pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
         )
-        refs = persist_code_review_artifacts(report, state.run_id, self.state_dir)
+        refs, manifest_entries = persist_code_review_artifacts(report, state.run_id, self.state_dir)
         for key, path in refs.items():
             state.artifacts[key] = path
 
         state.artifacts["code_review_report_index"] = json.dumps(
-            {k: k for k in refs},
+            build_report_index(manifest_entries),
         )[:2000]
 
     def _attach_pipeline_receipt(
