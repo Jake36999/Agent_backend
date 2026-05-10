@@ -64,46 +64,98 @@ class TestReviewDraftingCapabilityDescriptor:
 
 
 class TestWorkflowRunnerRespectsPolicy:
-    """Prove drafting is bypassed when policy is disabled."""
+    """Prove drafting is gated on both is_drafting_enabled() and lm_client."""
 
-    def _make_code_review_runner(self, monkeypatch):
+    _CI_RESPONSE = {
+        "ok": True, "status": "COMPLETE", "summary": "analyzed",
+        "artifacts": {
+            "repo_context_md": "# Context\n5 files",
+            "dependency_graph_summary": "3 nodes",
+            "dependency_graph_mmd": "graph TD\n  a --> b",
+            "code_map_summary": "5 files",
+        },
+    }
+
+    def _make_runner(self, *, lm_client=None):
         from unittest.mock import MagicMock
         from orchestrator.agent_workflow.runner import WorkflowRunner
         from orchestrator.pipeline.compiler import PipelineCompiler
         from orchestrator.pipeline.loader import PipelineLoader
         from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
-
-        monkeypatch.delenv(_ENV_VAR, raising=False)
-
-        ci_response = {
-            "ok": True, "status": "COMPLETE", "summary": "analyzed",
-            "artifacts": {
-                "repo_context_md": "# Context\n5 files",
-                "dependency_graph_summary": "3 nodes",
-                "dependency_graph_mmd": "graph TD\n  a --> b",
-                "code_map_summary": "5 files",
-            },
-        }
         tool_client = MagicMock()
-        tool_client.call_tool.return_value = ci_response
+        tool_client.call_tool.return_value = self._CI_RESPONSE
         return WorkflowRunner(
             tool_client=tool_client,
+            lm_client=lm_client,
             pipeline_loader=PipelineLoader(),
             pipeline_compiler=PipelineCompiler(allowed_tools=frozenset(ALLOWED_TOOLS)),
         )
 
-    def test_no_draft_artifact_when_disabled(self, monkeypatch):
-        runner = self._make_code_review_runner(monkeypatch)
+    def test_no_draft_by_default(self, monkeypatch):
+        monkeypatch.delenv(_ENV_VAR, raising=False)
+        runner = self._make_runner()
         _state, response = runner.run(
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
         assert response["ok"] is True
         assert "review_draft_md" not in response["artifacts"]
 
-    def test_no_draft_artifact_by_default(self, monkeypatch):
-        monkeypatch.delenv(_ENV_VAR, raising=False)
-        runner = self._make_code_review_runner(monkeypatch)
+    def test_no_draft_when_flag_disabled_even_with_lm_client(self, monkeypatch):
+        from unittest.mock import MagicMock
+        monkeypatch.setenv(_ENV_VAR, "false")
+        lm = MagicMock()
+        lm.complete.return_value = "## Draft"
+        runner = self._make_runner(lm_client=lm)
         _state, response = runner.run(
             objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
         )
+        assert "review_draft_md" not in response["artifacts"]
+        lm.complete.assert_not_called()
+
+    def test_no_draft_when_flag_enabled_but_no_lm_client(self, monkeypatch):
+        monkeypatch.setenv(_ENV_VAR, "true")
+        runner = self._make_runner(lm_client=None)
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert "review_draft_md" not in response["artifacts"]
+
+    def test_draft_produced_when_flag_enabled_and_lm_client_present(self, monkeypatch):
+        from unittest.mock import MagicMock
+        monkeypatch.setenv(_ENV_VAR, "true")
+        lm = MagicMock()
+        lm.complete.return_value = "## Draft Review\nWell-structured."
+        runner = self._make_runner(lm_client=lm)
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["ok"] is True
+        assert "review_draft_md" in response["artifacts"]
+        from pathlib import Path
+        content = Path(response["artifacts"]["review_draft_md"]).read_text(encoding="utf-8")
+        assert "Well-structured" in content
+
+    def test_draft_in_report_index_when_produced(self, monkeypatch):
+        import json
+        from unittest.mock import MagicMock
+        monkeypatch.setenv(_ENV_VAR, "true")
+        lm = MagicMock()
+        lm.complete.return_value = "## Draft"
+        runner = self._make_runner(lm_client=lm)
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        index = json.loads(response["artifacts"]["code_review_report_index"])
+        assert "review_draft_md" in index
+
+    def test_lm_client_failure_does_not_break_pipeline(self, monkeypatch):
+        from unittest.mock import MagicMock
+        monkeypatch.setenv(_ENV_VAR, "true")
+        lm = MagicMock()
+        lm.complete.side_effect = RuntimeError("model down")
+        runner = self._make_runner(lm_client=lm)
+        _state, response = runner.run(
+            objective="review", target_repo="/tmp/repo", pipeline_id="code_review"
+        )
+        assert response["ok"] is True
         assert "review_draft_md" not in response["artifacts"]

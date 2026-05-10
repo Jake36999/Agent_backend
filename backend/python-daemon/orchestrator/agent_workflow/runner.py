@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,7 @@ class WorkflowRunner:
         self,
         bridge_client: TcpBridgeClient | None = None,
         tool_client: Any | None = None,
+        lm_client: Any | None = None,
         allow_ingest: bool = False,
         *,
         state_dir: Path | None = None,
@@ -44,6 +47,7 @@ class WorkflowRunner:
     ) -> None:
         self.bridge_client = bridge_client
         self.tool_client = tool_client
+        self.lm_client = lm_client
         self.allow_ingest = allow_ingest
         self.state_dir = Path(state_dir) if state_dir is not None else default_state_dir()
         self.max_steps = int(max_steps or 8)
@@ -340,7 +344,8 @@ class WorkflowRunner:
         target_repo: str,
     ) -> None:
         import json
-        from orchestrator.code_review.artifact_writer import build_report_index, persist_code_review_artifacts
+        from orchestrator.code_review.artifact_writer import build_report_index, persist_code_review_artifacts, persist_draft_review
+        from orchestrator.code_review.drafting_policy import is_drafting_enabled
         from orchestrator.code_review.report_builder import build_code_review_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_code_review_report(
@@ -351,6 +356,31 @@ class WorkflowRunner:
         refs, manifest_entries = persist_code_review_artifacts(report, state.run_id, self.state_dir)
         for key, path in refs.items():
             state.artifacts[key] = path
+
+        if is_drafting_enabled() and self.lm_client is not None:
+            from orchestrator.code_review.review_drafter import draft_review
+            draft = draft_review(
+                lm_client=self.lm_client,
+                architecture_overview=report.architecture_overview_md,
+                code_review_summary=report.code_review_summary_md,
+                heuristics_json=report.heuristics_json,
+                next_actions_yaml=report.next_actions_yaml,
+                target_repo=target_repo,
+            )
+            if draft:
+                draft_bytes = draft.encode("utf-8")
+                draft_sha256 = hashlib.sha256(draft_bytes).hexdigest()
+                draft_path = persist_draft_review(draft, state.run_id, self.state_dir)
+                manifest_entries["review_draft_md"] = {
+                    "artifact_key": "review_draft_md",
+                    "filename": "review_draft.md",
+                    "relative_path": "review_draft.md",
+                    "sha256": draft_sha256,
+                    "bytes": len(draft_bytes),
+                    "content_type": "text/markdown",
+                    "created_at": datetime.utcnow().isoformat() + "Z",
+                }
+                state.artifacts["review_draft_md"] = draft_path
 
         state.artifacts["code_review_report_index"] = json.dumps(
             build_report_index(manifest_entries),

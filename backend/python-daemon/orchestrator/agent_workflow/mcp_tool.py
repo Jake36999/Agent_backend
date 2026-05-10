@@ -218,6 +218,7 @@ def run_agent_workflow(
     pipeline_compiler: PipelineCompiler | None = None,
     pipeline_loader: PipelineLoader | None = None,
     capability_registry: Any | None = None,
+    lm_client: Any | None = None,
 ) -> dict[str, Any]:
     if profile != "safe":
         return {
@@ -243,6 +244,7 @@ def run_agent_workflow(
     runner = WorkflowRunner(
         bridge_client=bridge_client,
         tool_client=tool_client,
+        lm_client=lm_client,
         allow_ingest=allow_ingest,
         state_dir=state_dir,
         max_steps=max_steps,
