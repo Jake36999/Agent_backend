@@ -14,6 +14,8 @@ from orchestrator.patching.apply import PatchApplyService
 from orchestrator.pipeline.compiler import PipelineCompiler
 from orchestrator.pipeline.loader import PipelineLoader
 
+from orchestrator.capabilities.policy import check_pipeline_policy
+
 from .bridge_client import TcpBridgeClient
 from .compaction import compact_tool_result
 from .policies import reasoning_policy
@@ -23,7 +25,6 @@ from .state import WorkflowState, default_state_dir, utc_now_iso
 class WorkflowRunner:
     def __init__(
         self,
-        lm_client: Any | None = None,
         bridge_client: TcpBridgeClient | None = None,
         tool_client: Any | None = None,
         allow_ingest: bool = False,
@@ -39,8 +40,8 @@ class WorkflowRunner:
         patch_apply: PatchApplyService | None = None,
         pipeline_compiler: PipelineCompiler | None = None,
         pipeline_loader: PipelineLoader | None = None,
+        capability_registry: Any | None = None,
     ) -> None:
-        self.lm_client = lm_client
         self.bridge_client = bridge_client
         self.tool_client = tool_client
         self.allow_ingest = allow_ingest
@@ -55,6 +56,7 @@ class WorkflowRunner:
         self.patch_apply = patch_apply
         self.pipeline_compiler = pipeline_compiler
         self.pipeline_loader = pipeline_loader
+        self.capability_registry = capability_registry
 
     def run(
         self,
@@ -92,10 +94,19 @@ class WorkflowRunner:
         if patch_apply_request is not None:
             return self._run_internal_patch_apply(state, target_repo, patch_apply_request)
 
+        effective_pipeline_id = pipeline_id if pipeline_id is not None else "investigation"
+
+        policy_error = check_pipeline_policy(effective_pipeline_id, self.capability_registry)
+        if policy_error is not None:
+            state.phase = "FINAL"
+            state.final_summary = policy_error
+            state.errors.append({"code": "capability_policy_block", "message": policy_error})
+            state_path = state.save(self.state_dir)
+            return state, self._final_response(state, state_path, ok=False, status="POLICY_BLOCK")
+
         plan = self._build_plan(objective, target_repo, profile, pipeline_id=pipeline_id, pipeline_vars=pipeline_vars)
-        if pipeline_id is not None:
-            state.artifacts["pipeline_id"] = pipeline_id
-            state.artifacts["compiled_step_count"] = len(plan)
+        state.artifacts["pipeline_id"] = effective_pipeline_id
+        state.artifacts["compiled_step_count"] = len(plan)
         if len(plan) > self.max_steps:
             state.phase = "FINAL"
             state.final_summary = "Workflow blocked: plan exceeds the configured maximum step count."
@@ -110,7 +121,6 @@ class WorkflowRunner:
 
         state.todos = [self._clone_todo(todo) for todo in plan]
         state_path = state.save(self.state_dir)
-        session_path = ""
         step_outputs: dict[str, dict[str, Any]] = {}
         executor = self.tool_client or self.bridge_client
 
@@ -122,7 +132,7 @@ class WorkflowRunner:
                 if executor is None:
                     executor = TcpBridgeClient()
                 resolved_args, binding_failures = self._resolve_args(
-                    todo["args"], session_path, step_outputs, step_id=todo["id"]
+                    todo["args"], step_outputs, step_id=todo["id"]
                 )
                 if binding_failures:
                     msg = "; ".join(binding_failures)
@@ -179,9 +189,6 @@ class WorkflowRunner:
                 state.final_summary = compact.get("summary", "Workflow blocked.")
                 state_path = state.save(self.state_dir)
                 return state, self._final_response(state, state_path, ok=False, status=str(compact.get("status", "ERROR")))
-
-            if todo["tool_name"] == "mcp_investigation_start":
-                session_path = str(state.artifacts.get("session_path") or session_path)
 
             if todo["tool_name"] == "mcp_investigation_compile_handoff":
                 state.phase = "SYNTHESIZE"
@@ -243,68 +250,19 @@ class WorkflowRunner:
         pipeline_id: str | None = None,
         pipeline_vars: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
-        if pipeline_id is not None and self.pipeline_compiler is not None and self.pipeline_loader is not None:
-            definition = self.pipeline_loader.load(pipeline_id)
+        effective_id = pipeline_id if pipeline_id is not None else "investigation"
+        if self.pipeline_compiler is not None and self.pipeline_loader is not None:
+            definition = self.pipeline_loader.load(effective_id)
             runtime_vars = {
                 "objective": objective,
                 "target_repo": target_repo,
                 "profile": profile,
+                "max_chars": str(self.max_tool_result_chars),
                 **(pipeline_vars or {}),
             }
             return self.pipeline_compiler.compile_to_plan_list(definition, runtime_vars)
 
-        return [
-            {
-                "id": "start_investigation",
-                "status": "pending",
-                "description": "Create a Tool Assist session",
-                "tool_name": "mcp_investigation_start",
-                "args": {
-                    "objective": objective,
-                    "target_repo": target_repo,
-                    "profile": profile,
-                },
-            },
-            {
-                "id": "filemap",
-                "status": "pending",
-                "description": "Build the file map for the investigation session",
-                "tool_name": "mcp_investigation_filemap",
-                "args": {
-                    "session_path": "${session_path}",
-                    "profile": profile,
-                },
-            },
-            {
-                "id": "validate_manifest",
-                "status": "pending",
-                "description": "Validate the manifest output",
-                "tool_name": "mcp_investigation_validate_manifest",
-                "args": {
-                    "session_path": "${session_path}",
-                },
-            },
-            {
-                "id": "read_report",
-                "status": "pending",
-                "description": "Read a bounded report preview",
-                "tool_name": "mcp_investigation_read_report",
-                "args": {
-                    "session_path": "${session_path}",
-                    "artifact_key": "manifest_doctor_md",
-                    "max_chars": self.max_tool_result_chars,
-                },
-            },
-            {
-                "id": "compile_handoff",
-                "status": "pending",
-                "description": "Compile the final handoff artifacts",
-                "tool_name": "mcp_investigation_compile_handoff",
-                "args": {
-                    "session_path": "${session_path}",
-                },
-            },
-        ]
+        raise RuntimeError("pipeline_compiler and pipeline_loader are required")
 
     def _clone_todo(self, todo: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -343,7 +301,6 @@ class WorkflowRunner:
     def _resolve_args(
         self,
         args: dict[str, Any],
-        session_path: str,
         step_outputs: dict[str, dict[str, Any]] | None = None,
         *,
         step_id: str = "",
@@ -361,8 +318,6 @@ class WorkflowRunner:
                     resolved[key] = None
                 else:
                     resolved[key] = result
-            elif value == "${session_path}":
-                resolved[key] = session_path  # backward compat for patch_plan.yaml
             else:
                 resolved[key] = value
         return resolved, failures
@@ -385,7 +340,7 @@ class WorkflowRunner:
         target_repo: str,
     ) -> None:
         import json
-        from orchestrator.code_review.artifact_writer import persist_code_review_artifacts
+        from orchestrator.code_review.artifact_writer import build_report_index, persist_code_review_artifacts
         from orchestrator.code_review.report_builder import build_code_review_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_code_review_report(
@@ -393,28 +348,12 @@ class WorkflowRunner:
             step_outputs=step_outputs,
             pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
         )
-        refs = persist_code_review_artifacts(report, state.run_id, self.state_dir)
+        refs, manifest_entries = persist_code_review_artifacts(report, state.run_id, self.state_dir)
         for key, path in refs.items():
             state.artifacts[key] = path
 
-        if self.lm_client is not None:
-            from orchestrator.code_review.artifact_writer import persist_draft_review
-            from orchestrator.code_review.review_drafter import draft_review
-            draft = draft_review(
-                lm_client=self.lm_client,
-                architecture_overview=report.architecture_overview_md,
-                code_review_summary=report.code_review_summary_md,
-                heuristics_json=report.heuristics_json,
-                next_actions_yaml=report.next_actions_yaml,
-                target_repo=target_repo,
-            )
-            if draft:
-                draft_path = persist_draft_review(draft, state.run_id, self.state_dir)
-                refs["review_draft_md"] = draft_path
-                state.artifacts["review_draft_md"] = draft_path
-
         state.artifacts["code_review_report_index"] = json.dumps(
-            {k: k for k in refs},
+            build_report_index(manifest_entries),
         )[:2000]
 
     def _attach_pipeline_receipt(

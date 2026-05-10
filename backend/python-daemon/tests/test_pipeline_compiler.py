@@ -19,11 +19,12 @@ def _simple_definition(steps=None, max_steps=20) -> PipelineDefinition:
                 tool_name="mcp_investigation_start",
                 args_template={"objective": "${objective}", "target_repo": "${target_repo}"},
                 description="Start investigation",
+                outputs={"session_path": "artifacts.session_path"},
             ),
             PipelineStep(
                 step_id="step_b",
                 tool_name="mcp_investigation_filemap",
-                args_template={"session_path": "${session_path}"},
+                args_template={"session_path": ArgBinding(from_step="step_a", path="artifacts.session_path")},
                 description="Build file map",
                 depends_on=("step_a",),
             ),
@@ -54,16 +55,22 @@ class TestPipelineCompiler:
         assert plan[0]["args"]["target_repo"] == "/tmp/repo"
         assert plan[0]["status"] == "pending"
         assert plan[1]["id"] == "step_b"
-        assert plan[1]["args"]["session_path"] == "${session_path}"
+        binding = plan[1]["args"]["session_path"]
+        assert isinstance(binding, dict) and binding.get("__binding__") is True
+        assert binding["from_step"] == "step_a"
+        assert binding["path"] == "artifacts.session_path"
 
     def test_compile_resolves_declared_variables(self):
         compiler = PipelineCompiler()
         definition = _simple_definition()
         plan = compiler.compile_to_plan_list(
             definition,
-            runtime_vars={"objective": "test", "target_repo": "/repo", "session_path": "/tmp/sess"},
+            runtime_vars={"objective": "test", "target_repo": "/repo"},
         )
-        assert plan[1]["args"]["session_path"] == "/tmp/sess"
+        assert plan[0]["args"]["objective"] == "test"
+        assert plan[0]["args"]["target_repo"] == "/repo"
+        binding = plan[1]["args"]["session_path"]
+        assert isinstance(binding, dict) and binding.get("__binding__") is True
 
     def test_compile_preserves_topological_order(self):
         steps = (
@@ -154,7 +161,8 @@ class TestPipelineCompiler:
         with pytest.raises(PipelineCompileError, match="unresolved variables"):
             compiler.compile_to_plan_list(_simple_definition(steps=steps))
 
-    def test_compile_allows_session_path_unresolved(self):
+    def test_compile_rejects_session_path_as_unresolved(self):
+        """${session_path} in pipeline templates is no longer allowed — use bind: instead."""
         steps = (
             PipelineStep(
                 step_id="a",
@@ -164,8 +172,8 @@ class TestPipelineCompiler:
             ),
         )
         compiler = PipelineCompiler()
-        plan = compiler.compile_to_plan_list(_simple_definition(steps=steps))
-        assert plan[0]["args"]["session_path"] == "${session_path}"
+        with pytest.raises(PipelineCompileError, match="unresolved.*session_path"):
+            compiler.compile_to_plan_list(_simple_definition(steps=steps))
 
 
 class TestPipelineLoader:
@@ -391,16 +399,16 @@ class TestArgBindingCompiler:
         with pytest.raises(PipelineCompileError, match="references itself"):
             PipelineCompiler().compile_to_plan_list(defn)
 
-    def test_legacy_session_path_still_compiles(self):
-        """${session_path} remains in ALLOWED_UNRESOLVED_VARS for backward compat."""
+    def test_unresolved_session_path_rejected(self):
+        """${session_path} in a pipeline template is now an error — use bind: instead."""
         steps = (
             PipelineStep(step_id="a", tool_name="mcp_investigation_filemap",
                          args_template={"session_path": "${session_path}"},
                          description="A"),
         )
         defn = PipelineDefinition(pipeline_id="test_pipeline", version="1.0", name="T", description="", steps=steps)
-        plan = PipelineCompiler().compile_to_plan_list(defn)
-        assert plan[0]["args"]["session_path"] == "${session_path}"
+        with pytest.raises(PipelineCompileError, match="unresolved.*session_path"):
+            PipelineCompiler().compile_to_plan_list(defn)
 
 
 class TestArgBindingLoader:
@@ -491,16 +499,16 @@ class TestArgBindingLoader:
             assert binding.from_step == "start_investigation"
             assert binding.path == "artifacts.session_path"
 
-    def test_patch_plan_backward_compat(self):
-        """patch_plan.yaml still uses ${session_path} and loads without error."""
+    def test_patch_plan_uses_bind_syntax(self):
+        """patch_plan.yaml uses bind: syntax for session_path (migrated from ${session_path})."""
         loader = PipelineLoader()
         defn = loader.load("patch_plan")
-        session_paths = [
-            step.args_template.get("session_path")
-            for step in defn.steps
-            if "session_path" in step.args_template
-        ]
-        assert all(v == "${session_path}" for v in session_paths)
+        assert defn.steps[0].outputs == {"session_path": "artifacts.session_path"}
+        for step in defn.steps[1:]:
+            binding = step.args_template.get("session_path")
+            assert isinstance(binding, ArgBinding), f"step {step.step_id} missing binding"
+            assert binding.from_step == "start_investigation"
+            assert binding.path == "artifacts.session_path"
 
 
 class TestPublicCapabilityDict:

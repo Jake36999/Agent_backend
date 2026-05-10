@@ -9,7 +9,6 @@ from .models import ArgBinding, CompiledPlan, PipelineDefinition, PipelineStep
 
 _VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)}")
 
-ALLOWED_UNRESOLVED_VARS: frozenset[str] = frozenset({"session_path"})
 
 
 class PipelineCompileError(ValueError):
@@ -132,8 +131,7 @@ class PipelineCompiler:
                 continue  # runtime-resolved; not a template variable
             elif isinstance(value, str):
                 for m in _VAR_RE.finditer(value):
-                    if m.group(1) not in ALLOWED_UNRESOLVED_VARS:
-                        found.append(m.group(1))
+                    found.append(m.group(1))
             elif isinstance(value, dict):
                 found.extend(self._collect_unresolved(value))
         return found

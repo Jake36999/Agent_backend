@@ -5,8 +5,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from orchestrator.agent_workflow.compaction import _compact_error, compact_tool_result
+from orchestrator.agent_workflow.mcp_tool import run_agent_workflow
 from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
 from orchestrator.agent_workflow.runner import WorkflowRunner
+from orchestrator.capabilities.models import CapabilityManifest, CapabilityType
+from orchestrator.capabilities.policy import check_pipeline_policy, CapabilityPolicyError
 from orchestrator.pipeline.compiler import PipelineCompiler
 from orchestrator.pipeline.loader import PipelineLoader
 
@@ -150,8 +153,8 @@ class TestPipelineOutputBindings:
         assert "start_investigation" in trace
         assert isinstance(trace["start_investigation"], list)
 
-    def test_patch_plan_backward_compat_session_path(self):
-        """patch_plan.yaml uses ${session_path} legacy syntax — must still resolve."""
+    def test_patch_plan_session_path_flows_via_binding(self):
+        """patch_plan.yaml uses bind: syntax — session_path resolved from start_investigation."""
         runner, calls = _make_runner_with_capture({
             "mcp_investigation_start": {
                 "ok": True, "status": "COMPLETE", "summary": "started",
@@ -187,10 +190,18 @@ class TestPipelineReceiptAttachment:
         assert receipt["authorized"] is True
         assert receipt["network_access"] is False
 
-    def test_pipeline_receipt_absent_without_pipeline_id(self):
-        runner = _make_runner()
+    def test_pipeline_receipt_present_without_explicit_pipeline_id(self):
+        """Without explicit pipeline_id, defaults to investigation — receipt still attached."""
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
         _state, response = runner.run(objective="audit", target_repo="/tmp/repo")
-        assert "pipeline_receipt" not in response.get("artifacts", {})
+        receipt = response.get("artifacts", {}).get("pipeline_receipt")
+        assert isinstance(receipt, dict)
+        assert receipt["capability_id"] == "pipeline.investigation"
 
     def test_pipeline_receipt_no_source_path(self):
         runner, _calls = _make_runner_with_capture({
@@ -320,12 +331,143 @@ class TestPipelineIntegration:
         assert artifacts.get("pipeline_id") == "investigation"
         assert artifacts.get("compiled_step_count") == 5
 
-    def test_workflow_runner_without_pipeline_id_omits_pipeline_artifacts(self):
+    def test_workflow_runner_without_pipeline_id_defaults_to_investigation(self):
+        """Without explicit pipeline_id, defaults to investigation pipeline."""
         runner = _make_runner()
         _state, response = runner.run(
             objective="audit codebase",
             target_repo="/tmp/repo",
         )
         artifacts = response.get("artifacts", {})
-        assert "pipeline_id" not in artifacts
-        assert "compiled_step_count" not in artifacts
+        assert artifacts.get("pipeline_id") == "investigation"
+        assert artifacts.get("compiled_step_count") == 5
+
+
+class TestCompilerFallbackRestriction:
+    def test_run_agent_workflow_fallback_compiler_has_allowed_tools(self, tmp_path):
+        """run_agent_workflow must use a restricted compiler even without injection."""
+        result = run_agent_workflow(
+            objective="audit",
+            target_repo=str(tmp_path),
+            allowed_roots=(tmp_path,),
+            tool_client=MagicMock(call_tool=MagicMock(return_value={
+                "ok": True, "status": "COMPLETE", "summary": "ok",
+                "artifacts": {"session_path": "/tmp/s"},
+            })),
+        )
+        assert result["ok"] is True
+        assert result["artifacts"]["pipeline_id"] == "investigation"
+
+
+def _make_manifest(capability_id: str, *, status: str = "verified", risk_tier: str = "T2") -> CapabilityManifest:
+    return CapabilityManifest(
+        capability_id=capability_id,
+        capability_type=CapabilityType.PIPELINE_TEMPLATE,
+        version="1.0.0",
+        name=capability_id,
+        description="test",
+        risk_tier=risk_tier,
+        status=status,
+    )
+
+
+class _FakeRegistry:
+    """Minimal registry stub for policy tests — no SQLite needed."""
+
+    def __init__(self, manifests: dict[str, CapabilityManifest] | None = None):
+        self._manifests = manifests or {}
+
+    def get(self, capability_id: str) -> CapabilityManifest | None:
+        return self._manifests.get(capability_id)
+
+
+class TestCapabilityPolicyEnforcement:
+    def test_quarantined_pipeline_blocked(self):
+        registry = _FakeRegistry({
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="quarantined"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is not None
+        assert "quarantined" in error
+
+    def test_disabled_pipeline_blocked(self):
+        registry = _FakeRegistry({
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="disabled"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is not None
+        assert "disabled" in error
+
+    def test_verified_pipeline_allowed(self):
+        registry = _FakeRegistry({
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="verified"
+            ),
+        })
+        error = check_pipeline_policy("investigation", registry)
+        assert error is None
+
+    def test_no_registry_means_no_enforcement(self):
+        error = check_pipeline_policy("investigation", None)
+        assert error is None
+
+    def test_unknown_pipeline_allowed(self):
+        registry = _FakeRegistry({})
+        error = check_pipeline_policy("nonexistent", registry)
+        assert error is None
+
+    def test_runner_blocks_quarantined_pipeline(self):
+        registry = _FakeRegistry({
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="quarantined"
+            ),
+        })
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        runner.capability_registry = registry
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is False
+        assert response["status"] == "POLICY_BLOCK"
+        err = response.get("error", {})
+        assert err.get("code") == "capability_policy_block"
+        assert "quarantined" in err.get("message", "")
+
+    def test_runner_allows_verified_pipeline(self):
+        registry = _FakeRegistry({
+            "pipeline.investigation": _make_manifest(
+                "pipeline.investigation", status="verified"
+            ),
+        })
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        runner.capability_registry = registry
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True
+
+    def test_runner_no_registry_passes(self):
+        runner, _calls = _make_runner_with_capture({
+            "mcp_investigation_start": {
+                "ok": True, "status": "COMPLETE", "summary": "started",
+                "artifacts": {"session_path": "/tmp/s"},
+            }
+        })
+        _state, response = runner.run(
+            objective="audit", target_repo="/tmp/repo", pipeline_id="investigation"
+        )
+        assert response["ok"] is True
