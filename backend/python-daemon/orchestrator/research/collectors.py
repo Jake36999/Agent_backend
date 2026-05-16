@@ -131,3 +131,50 @@ class WebSourceCollector:
 
     def collect(self, query: str, *, max_sources: int = _MAX_SOURCES) -> list[SourceRecord]:
         return []
+
+
+class ConfiguredWebCollector:
+    """Fetches real content from http/https URLs listed in source dicts.
+
+    Each source dict must have a ``url_or_path`` field that starts with
+    http:// or https://.  The provider handles domain-allowlist and
+    content-type guards; this collector wraps results into SourceRecords.
+    """
+
+    def __init__(
+        self,
+        sources: list[dict[str, Any]],
+        provider: Any,
+    ) -> None:
+        self._sources = sources
+        self._provider = provider
+
+    def collect(self, query: str, *, max_sources: int = _MAX_SOURCES) -> list[SourceRecord]:
+        from .source_normalizer import dedupe_and_cap
+
+        now = datetime.now(timezone.utc).isoformat()
+        raw_records: list[SourceRecord] = []
+
+        for i, s in enumerate(self._sources[:max_sources]):
+            url = str(s.get("url_or_path", s.get("path", ""))).strip()
+            title = str(s.get("title", url or f"Web Source {i + 1}"))
+            content = self._provider.fetch(url) if url.startswith(("http://", "https://")) else None
+            if content is None:
+                excerpt = str(s.get("excerpt", s.get("content", "")))[:_MAX_EXCERPT_CHARS]
+            else:
+                excerpt = content[:_MAX_EXCERPT_CHARS]
+            if not excerpt.strip():
+                continue
+            raw_records.append(
+                SourceRecord(
+                    source_id=str(s.get("source_id", f"web_{i:03d}")),
+                    title=title,
+                    url_or_path=url,
+                    source_type="web",
+                    excerpt=excerpt,
+                    retrieved_at=str(s.get("retrieved_at", now)),
+                    relevance_score=float(s.get("relevance_score", 1.0)),
+                )
+            )
+
+        return dedupe_and_cap(raw_records)

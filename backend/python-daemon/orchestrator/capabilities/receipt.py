@@ -5,7 +5,7 @@ from typing import Any
 
 
 _RISK_TIERS = frozenset({"T1", "T2", "T3", "T4"})
-_CAPABILITY_TYPES = frozenset({"adapter", "integration", "pipeline", "research", "skill"})
+_CAPABILITY_TYPES = frozenset({"adapter", "integration", "pipeline", "research", "sandbox", "skill"})
 
 _SUMMARY_MAX = 200
 _ARTIFACT_REFS_MAX = 20
