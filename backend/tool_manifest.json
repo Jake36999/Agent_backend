@@ -417,6 +417,30 @@
       "version": "0.2.0"
     },
     {
+      "tool_id": "mcp_sandbox_probe",
+      "display_name": "Sandbox probe",
+      "description": "Read-only local filesystem probe (stat, list_dir, read_head). Internal-only; path-validated against allowed roots.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "operation": { "type": "string", "enum": ["stat", "list_dir", "read_head"] },
+          "max_entries": { "type": "integer", "minimum": 1, "maximum": 1000 },
+          "max_bytes": { "type": "integer", "minimum": 1, "maximum": 65536 }
+        },
+        "required": ["path", "operation"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["python-daemon", "internal"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": true,
+      "internal_only": true,
+      "version": "0.1.0"
+    },
+    {
       "tool_id": "mcp_list_capabilities",
       "display_name": "List capabilities",
       "description": "List registered capabilities from the unified capability registry.",

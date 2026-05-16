@@ -216,6 +216,7 @@ class ToolAdapters:
         pipeline_loader: PipelineLoader | None = None,
         capability_registry: CapabilityRegistry | None = None,
         code_intelligence: CodeIntelligenceAnalyzer | None = None,
+        sandbox: Any | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -234,6 +235,7 @@ class ToolAdapters:
         self.pipeline_loader = pipeline_loader
         self.capability_registry = capability_registry
         self.code_intelligence = code_intelligence
+        self.sandbox = sandbox
         self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
         self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
         if queue_db_path is not None:
@@ -515,6 +517,18 @@ class ToolAdapters:
                 )
                 result["capability_receipt"] = compact_receipt(receipt)
                 return result
+            if tool_name == "mcp_sandbox_probe":
+                if self.sandbox is None:
+                    raise AdapterFailure("sandbox adapter is not configured")
+                operation = str(args.get("operation", ""))
+                path = str(args.get("path", ""))
+                if operation == "stat":
+                    return self.sandbox.stat(path)
+                if operation == "list_dir":
+                    return self.sandbox.list_dir(path, int(args.get("max_entries", 200)))
+                if operation == "read_head":
+                    return self.sandbox.read_head(path, int(args.get("max_bytes", 4096)))
+                raise AdapterFailure(f"unknown sandbox operation: {operation!r}")
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:
             raise AdapterFailure(f"missing required argument: {exc}") from exc
