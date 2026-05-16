@@ -216,6 +216,7 @@ class ToolAdapters:
         pipeline_loader: PipelineLoader | None = None,
         capability_registry: CapabilityRegistry | None = None,
         code_intelligence: CodeIntelligenceAnalyzer | None = None,
+        sandbox: Any | None = None,
     ) -> None:
         self.semantic_memory = semantic_memory
         self.file_tools = file_tools
@@ -234,6 +235,7 @@ class ToolAdapters:
         self.pipeline_loader = pipeline_loader
         self.capability_registry = capability_registry
         self.code_intelligence = code_intelligence
+        self.sandbox = sandbox
         self.allowed_roots = tuple(root.resolve() for root in (allowed_roots or ()))
         self.skill_registry_root = Path(skill_registry_root).resolve() if skill_registry_root is not None else None
         if queue_db_path is not None:
@@ -515,6 +517,90 @@ class ToolAdapters:
                 )
                 result["capability_receipt"] = compact_receipt(receipt)
                 return result
+            if tool_name == "mcp_integration_invoke":
+                from .integrations.policy import classify_integration_request
+                from .integrations.adapters import get_adapter, IntegrationError
+                from .capabilities.receipt import build_receipt, compact_receipt
+                integration_type = str(args.get("integration_type", ""))
+                action = str(args.get("action", ""))
+                params = args.get("params") or {}
+                if not isinstance(params, dict):
+                    raise AdapterFailure("params must be an object")
+                dry_run = bool(args.get("dry_run", True))
+                decision = classify_integration_request(
+                    integration_type=integration_type,
+                    action=action,
+                    dry_run=dry_run,
+                    profile="safe",
+                )
+                if not decision.allowed:
+                    receipt = build_receipt(
+                        capability_id=f"integration.{integration_type}",
+                        capability_type="integration",
+                        risk_tier=decision.risk_tier if decision.risk_tier in {"T1","T2","T3","T4"} else "T4",
+                        status="POLICY_BLOCK",
+                        authorized=False,
+                        network_access=True,
+                        writes_external_state=not dry_run,
+                        summary=decision.reason[:200],
+                    )
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": decision.reason,
+                        "artifacts": {},
+                        "integration_receipt": compact_receipt(receipt),
+                        "error": {"code": "integration_policy_block", "message": decision.reason},
+                    }
+                try:
+                    adapter = get_adapter(integration_type)
+                    result = adapter.invoke(action, params, dry_run=dry_run)
+                except IntegrationError as exc:
+                    raise AdapterFailure(str(exc)) from exc
+                receipt = build_receipt(
+                    capability_id=f"integration.{integration_type}",
+                    capability_type="integration",
+                    risk_tier=decision.risk_tier,
+                    status="OK",
+                    authorized=True,
+                    network_access=False,
+                    writes_external_state=False,
+                    summary=f"Dry-run {integration_type}.{action} completed; no external call made.",
+                )
+                result["integration_receipt"] = compact_receipt(receipt)
+                return result
+            if tool_name == "mcp_deep_research":
+                from .research.deep_research_adapter import invoke_deep_research
+                query = str(args.get("query", ""))
+                if not query:
+                    raise AdapterFailure("query is required")
+                source_mode = str(args.get("source_mode", "static"))
+                target_repo = str(args.get("target_repo", ""))
+                max_sources = int(args.get("max_sources", 12))
+                max_depth = int(args.get("max_depth", 1))
+                sources_raw = args.get("sources")
+                if sources_raw is not None and not isinstance(sources_raw, list):
+                    raise AdapterFailure("sources must be an array")
+                return invoke_deep_research(
+                    query=query,
+                    source_mode=source_mode,
+                    sources_raw=list(sources_raw) if sources_raw else None,
+                    target_repo=target_repo,
+                    max_sources=max_sources,
+                    max_depth=max_depth,
+                )
+            if tool_name == "mcp_sandbox_probe":
+                if self.sandbox is None:
+                    raise AdapterFailure("sandbox adapter is not configured")
+                operation = str(args.get("operation", ""))
+                path = str(args.get("path", ""))
+                if operation == "stat":
+                    return self.sandbox.stat(path)
+                if operation == "list_dir":
+                    return self.sandbox.list_dir(path, int(args.get("max_entries", 200)))
+                if operation == "read_head":
+                    return self.sandbox.read_head(path, int(args.get("max_bytes", 4096)))
+                raise AdapterFailure(f"unknown sandbox operation: {operation!r}")
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:
             raise AdapterFailure(f"missing required argument: {exc}") from exc

@@ -1,0 +1,29 @@
+pipeline_id: deep_research
+version: "0.2.0"
+name: "Deep Research"
+description: >
+  Citation-first research query dispatcher. A single mcp_deep_research step
+  collects bounded sources via the configured collector (static, local, or
+  web_stub) and produces a structured research report. No external writes,
+  no model inference — all findings are grounded in collected sources.
+max_steps: 4
+variables:
+  profile: "safe"
+  max_sources: "12"
+  source_mode: "local"
+  target_repo: ""
+
+steps:
+  - step_id: deep_research
+    tool_name: mcp_deep_research
+    description: "Collect sources and build citation-first research report"
+    args:
+      query: "${objective}"
+      target_repo: "${target_repo}"
+      source_mode: "${source_mode}"
+      max_sources: "${max_sources}"
+    outputs:
+      research_report_md: artifacts.research_report_md
+      research_citations_json: artifacts.research_citations_json
+      research_sources_json: artifacts.research_sources_json
+      research_next_actions_yaml: artifacts.research_next_actions_yaml

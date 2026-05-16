@@ -22,8 +22,11 @@ ALLOWED_TOOLS = {
     "mcp_semantic_search",
     "mcp_semantic_search_active",
     "mcp_set_active_partition",
+    "mcp_integration_invoke",
+    "mcp_sandbox_probe",
     "mcp_set_active_project_manual",
     "mcp_verify_integrity",
+    "mcp_deep_research",
 }
 
 RAW_SHELL_TOOLS = {"sh", "bash", "shell", "exec", "python"}
@@ -41,9 +44,12 @@ REQUIRED_ARGS = {
     "mcp_semantic_search": ("project_id", "query"),
     "mcp_semantic_search_active": ("query",),
     "mcp_set_active_partition": ("conversation_path",),
+    "mcp_integration_invoke": ("integration_type", "action"),
+    "mcp_sandbox_probe": ("path", "operation"),
     "mcp_set_active_project_manual": ("project_id",),
     "mcp_scout_workspace": ("project_id", "absolute_path"),
     "mcp_verify_integrity": ("absolute_path", "expected_sha256", "expected_metadata_hash"),
+    "mcp_deep_research": ("query",),
 }
 
 

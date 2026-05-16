@@ -258,9 +258,12 @@ class TestPipelineLoader:
     def test_active_templates_do_not_include_examples(self):
         loader = PipelineLoader()
         templates = loader.list_templates()
-        # code_review is now active; deep_research and other examples remain inactive
+        # code_review and deep_research are now both active
         assert "code_review" in templates
-        assert "deep_research" not in templates
+        assert "deep_research" in templates
+        # reserved/example names must not appear
+        assert "mcp_pipeline_run" not in templates
+        assert "examples" not in templates
 
     def test_code_review_template_loads_and_compiles(self):
         from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
@@ -293,7 +296,7 @@ class TestPipelineLoader:
     def test_load_inactive_pipeline_rejected(self):
         loader = PipelineLoader()
         with pytest.raises(PipelineLoadError, match="not active"):
-            loader.load("deep_research")
+            loader.load("example_pipeline_that_does_not_exist")
 
     def test_load_file_rejects_unknown_top_level_field(self):
         yaml_content = {
