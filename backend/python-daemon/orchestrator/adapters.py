@@ -569,6 +569,26 @@ class ToolAdapters:
                 )
                 result["integration_receipt"] = compact_receipt(receipt)
                 return result
+            if tool_name == "mcp_deep_research":
+                from .research.deep_research_adapter import invoke_deep_research
+                query = str(args.get("query", ""))
+                if not query:
+                    raise AdapterFailure("query is required")
+                source_mode = str(args.get("source_mode", "static"))
+                target_repo = str(args.get("target_repo", ""))
+                max_sources = int(args.get("max_sources", 12))
+                max_depth = int(args.get("max_depth", 1))
+                sources_raw = args.get("sources")
+                if sources_raw is not None and not isinstance(sources_raw, list):
+                    raise AdapterFailure("sources must be an array")
+                return invoke_deep_research(
+                    query=query,
+                    source_mode=source_mode,
+                    sources_raw=list(sources_raw) if sources_raw else None,
+                    target_repo=target_repo,
+                    max_sources=max_sources,
+                    max_depth=max_depth,
+                )
             if tool_name == "mcp_sandbox_probe":
                 if self.sandbox is None:
                     raise AdapterFailure("sandbox adapter is not configured")

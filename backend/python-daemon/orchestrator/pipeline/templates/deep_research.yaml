@@ -1,52 +1,29 @@
 pipeline_id: deep_research
-version: "0.1.0"
+version: "0.2.0"
 name: "Deep Research"
 description: >
-  Multi-pass read-only codebase investigation producing a bounded research
-  report with deterministic citations. No files modified, no external calls.
-max_steps: 8
+  Citation-first research query dispatcher. A single mcp_deep_research step
+  collects bounded sources via the configured collector (static, local, or
+  web_stub) and produces a structured research report. No external writes,
+  no model inference — all findings are grounded in collected sources.
+max_steps: 4
 variables:
   profile: "safe"
-  max_files: "500"
-  max_edges: "500"
-  max_chars: "8000"
+  max_sources: "12"
+  source_mode: "local"
+  target_repo: ""
 
 steps:
-  - step_id: repo_context
-    tool_name: mcp_code_intelligence
-    description: "Collect repository context and architecture overview"
+  - step_id: deep_research
+    tool_name: mcp_deep_research
+    description: "Collect sources and build citation-first research report"
     args:
+      query: "${objective}"
       target_repo: "${target_repo}"
-      mode: "repo_context"
-      max_files: "${max_files}"
-      max_chars: "${max_chars}"
-
-  - step_id: code_map
-    tool_name: mcp_code_intelligence
-    description: "Build detailed code map for source discovery"
-    depends_on: [repo_context]
-    args:
-      target_repo: "${target_repo}"
-      mode: "code_map"
-      max_files: "${max_files}"
-      max_chars: "${max_chars}"
-
-  - step_id: dependency_graph
-    tool_name: mcp_code_intelligence
-    description: "Collect inter-module dependency relationships"
-    depends_on: [repo_context]
-    args:
-      target_repo: "${target_repo}"
-      mode: "dependency_graph"
-      max_files: "${max_files}"
-      max_edges: "${max_edges}"
-
-  - step_id: mermaid
-    tool_name: mcp_code_intelligence
-    description: "Render dependency topology as Mermaid diagram"
-    depends_on: [dependency_graph]
-    args:
-      target_repo: "${target_repo}"
-      mode: "mermaid"
-      max_files: "${max_files}"
-      max_edges: "${max_edges}"
+      source_mode: "${source_mode}"
+      max_sources: "${max_sources}"
+    outputs:
+      research_report_md: artifacts.research_report_md
+      research_citations_json: artifacts.research_citations_json
+      research_sources_json: artifacts.research_sources_json
+      research_next_actions_yaml: artifacts.research_next_actions_yaml

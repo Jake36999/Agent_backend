@@ -465,6 +465,39 @@
       "version": "0.1.0"
     },
     {
+      "tool_id": "mcp_deep_research",
+      "display_name": "Deep research",
+      "description": "Citation-first research query dispatcher. Collects bounded sources via static, local, or web-stub collectors and produces a structured research report with deterministic citations. Internal-only; no external writes.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "source_mode": { "type": "string", "enum": ["static", "local", "web_stub"], "default": "static" },
+          "target_repo": { "type": "string", "maxLength": 2000 },
+          "max_sources": { "type": "integer", "minimum": 1, "maximum": 50, "default": 12 },
+          "max_depth": { "type": "integer", "minimum": 1, "maximum": 5, "default": 1 },
+          "sources": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["query"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["python-daemon", "internal"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "read_only",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "internal_only": true,
+      "version": "0.1.0"
+    },
+    {
       "tool_id": "mcp_list_capabilities",
       "display_name": "List capabilities",
       "description": "List registered capabilities from the unified capability registry.",

@@ -371,7 +371,25 @@ class WorkflowRunner:
         target_repo: str,
     ) -> None:
         import json
-        from orchestrator.deep_research.artifact_writer import build_research_index, persist_deep_research_artifacts
+        # New path: single-step mcp_deep_research pipeline
+        dr_out = step_outputs.get("deep_research", {})
+        content = dr_out.get("artifacts", {}) if isinstance(dr_out, dict) else {}
+
+        if content:
+            from orchestrator.research.artifact_writer import (
+                build_research_index,
+                persist_research_artifacts,
+            )
+            refs, manifest_entries = persist_research_artifacts(content, state.run_id, self.state_dir)
+            for key, path in refs.items():
+                state.artifacts[key] = path
+            state.artifacts["research_report_index"] = json.dumps(
+                build_research_index(manifest_entries),
+            )[:2000]
+            return
+
+        # Legacy path: 4-step mcp_code_intelligence pipeline (kept for backward compat)
+        from orchestrator.deep_research.artifact_writer import build_research_index as build_dr_index, persist_deep_research_artifacts
         from orchestrator.deep_research.report_builder import build_deep_research_report
         pipeline_receipt = state.artifacts.get("pipeline_receipt")
         report = build_deep_research_report(
@@ -384,7 +402,7 @@ class WorkflowRunner:
         for key, path in refs.items():
             state.artifacts[key] = path
         state.artifacts["research_report_index"] = json.dumps(
-            build_research_index(manifest_entries),
+            build_dr_index(manifest_entries),
         )[:2000]
 
     def _attempt_draft_review(

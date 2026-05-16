@@ -207,7 +207,7 @@ class TestPersistDeepResearchArtifacts:
 
 
 # ---------------------------------------------------------------------------
-# Sprint 4B: pipeline template + loader
+# Pipeline template (updated: single-step mcp_deep_research)
 # ---------------------------------------------------------------------------
 
 class TestDeepResearchPipeline:
@@ -219,25 +219,20 @@ class TestDeepResearchPipeline:
         defn = loader.load("deep_research")
         assert defn.pipeline_id == "deep_research"
 
-    def test_pipeline_has_four_steps(self):
+    def test_pipeline_has_one_step(self):
         loader = PipelineLoader()
         defn = loader.load("deep_research")
-        assert len(defn.steps) == 4
+        assert len(defn.steps) == 1
 
-    def test_step_ids(self):
+    def test_step_uses_mcp_deep_research(self):
         loader = PipelineLoader()
         defn = loader.load("deep_research")
-        ids = [s.step_id for s in defn.steps]
-        assert "repo_context" in ids
-        assert "code_map" in ids
-        assert "dependency_graph" in ids
-        assert "mermaid" in ids
+        assert defn.steps[0].tool_name == "mcp_deep_research"
 
-    def test_all_steps_use_mcp_code_intelligence(self):
+    def test_step_id_is_deep_research(self):
         loader = PipelineLoader()
         defn = loader.load("deep_research")
-        for step in defn.steps:
-            assert step.tool_name == "mcp_code_intelligence"
+        assert defn.steps[0].step_id == "deep_research"
 
     def test_pipeline_compiles(self):
         from orchestrator.pipeline.compiler import PipelineCompiler
@@ -246,14 +241,58 @@ class TestDeepResearchPipeline:
         defn = loader.load("deep_research")
         compiler = PipelineCompiler(allowed_tools=frozenset(ALLOWED_TOOLS))
         plan = compiler.compile_to_plan_list(
-            defn, {"objective": "test", "target_repo": "/tmp/r", "profile": "safe", "max_chars": "8000"}
+            defn, {"objective": "test", "target_repo": "/tmp/r", "profile": "safe"}
         )
-        assert len(plan) == 4
+        assert len(plan) == 1
 
 
 # ---------------------------------------------------------------------------
-# Sprint 4B: WorkflowRunner integration
+# WorkflowRunner integration (updated: mocks mcp_deep_research)
 # ---------------------------------------------------------------------------
+
+_DR_TOOL_RESPONSE = {
+    "ok": True,
+    "status": "OK",
+    "query": "research the architecture",
+    "source_mode": "static",
+    "sources_count": 0,
+    "answer_md": "Insufficient evidence.",
+    "gaps": [],
+    "confidence": "none",
+    "suggested_next_actions": [],
+    "artifacts": {
+        "research_report_md": "# Research Report\n\nTest content.",
+        "research_citations_json": '{"citations":[]}',
+        "research_sources_json": '{"sources":[]}',
+        "research_next_actions_yaml": "next_actions:\n",
+    },
+    "capability_receipt": {
+        "operation": "capability.execute",
+        "capability_id": "research.deep_research",
+        "capability_type": "research",
+        "risk_tier": "T2",
+        "status": "OK",
+        "authorized": True,
+        "network_access": False,
+        "writes_external_state": False,
+        "approval_id": None,
+        "artifact_refs": ["research_report_md"],
+        "summary": "ok",
+    },
+}
+
+_CI_RESPONSE = {
+    "ok": True,
+    "status": "COMPLETE",
+    "summary": "analyzed",
+    "artifacts": {
+        "repo_context_md": "# Repo\n5 files.",
+        "code_map_summary": "3 modules.",
+        "dependency_graph_summary": "5 edges.",
+        "dependency_graph_mmd": "graph TD\n  a --> b",
+    },
+}
+
 
 class TestDeepResearchRunnerIntegration:
     def _make_runner(self, tmp_path: Path):
@@ -262,19 +301,23 @@ class TestDeepResearchRunnerIntegration:
         from orchestrator.pipeline.loader import PipelineLoader
         from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
 
-        ci_response = {
-            "ok": True,
-            "status": "COMPLETE",
-            "summary": "analyzed",
-            "artifacts": {
-                "repo_context_md": "# Repo\n5 files.",
-                "code_map_summary": "3 modules.",
-                "dependency_graph_summary": "5 edges.",
-                "dependency_graph_mmd": "graph TD\n  a --> b",
-            },
-        }
         tool_client = MagicMock()
-        tool_client.call_tool.return_value = ci_response
+        tool_client.call_tool.return_value = _DR_TOOL_RESPONSE
+        return WorkflowRunner(
+            tool_client=tool_client,
+            pipeline_loader=PipelineLoader(),
+            pipeline_compiler=PipelineCompiler(allowed_tools=frozenset(ALLOWED_TOOLS)),
+            state_dir=tmp_path,
+        )
+
+    def _make_ci_runner(self, tmp_path: Path):
+        from orchestrator.agent_workflow.runner import WorkflowRunner
+        from orchestrator.pipeline.compiler import PipelineCompiler
+        from orchestrator.pipeline.loader import PipelineLoader
+        from orchestrator.agent_workflow.policies import ALLOWED_TOOLS
+
+        tool_client = MagicMock()
+        tool_client.call_tool.return_value = _CI_RESPONSE
         return WorkflowRunner(
             tool_client=tool_client,
             pipeline_loader=PipelineLoader(),
@@ -301,14 +344,14 @@ class TestDeepResearchRunnerIntegration:
         )
         assert "research_report_md" in response["artifacts"]
 
-    def test_research_citations_yaml_in_artifacts(self, tmp_path: Path):
+    def test_research_citations_json_in_artifacts(self, tmp_path: Path):
         runner = self._make_runner(tmp_path)
         _state, response = runner.run(
             objective="research",
             target_repo="/tmp/repo",
             pipeline_id="deep_research",
         )
-        assert "research_citations_yaml" in response["artifacts"]
+        assert "research_citations_json" in response["artifacts"]
 
     def test_research_report_index_in_artifacts(self, tmp_path: Path):
         runner = self._make_runner(tmp_path)
@@ -349,7 +392,7 @@ class TestDeepResearchRunnerIntegration:
         assert "code_review_report_index" not in response["artifacts"]
 
     def test_code_review_does_not_produce_research_artifacts(self, tmp_path: Path):
-        runner = self._make_runner(tmp_path)
+        runner = self._make_ci_runner(tmp_path)
         _state, response = runner.run(
             objective="review",
             target_repo="/tmp/repo",

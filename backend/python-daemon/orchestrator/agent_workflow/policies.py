@@ -26,6 +26,7 @@ ALLOWED_TOOLS = {
     "mcp_sandbox_probe",
     "mcp_set_active_project_manual",
     "mcp_verify_integrity",
+    "mcp_deep_research",
 }
 
 RAW_SHELL_TOOLS = {"sh", "bash", "shell", "exec", "python"}
@@ -48,6 +49,7 @@ REQUIRED_ARGS = {
     "mcp_set_active_project_manual": ("project_id",),
     "mcp_scout_workspace": ("project_id", "absolute_path"),
     "mcp_verify_integrity": ("absolute_path", "expected_sha256", "expected_metadata_hash"),
+    "mcp_deep_research": ("query",),
 }
 
 
