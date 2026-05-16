@@ -417,6 +417,30 @@
       "version": "0.2.0"
     },
     {
+      "tool_id": "mcp_integration_invoke",
+      "display_name": "Integration invoke",
+      "description": "Invoke an external integration adapter (Composio, Rube). Dry-run only in this release; live invocations are blocked. Internal-only.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "integration_type": { "type": "string", "enum": ["composio", "rube"] },
+          "action": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "params": { "type": "object", "additionalProperties": true, "maxProperties": 20 },
+          "dry_run": { "type": "boolean", "default": true }
+        },
+        "required": ["integration_type", "action"]
+      },
+      "dispatcher": "python-daemon:ToolAdapters.call_mcp_tool",
+      "surfaces": ["python-daemon", "internal"],
+      "default_exposed_to_lmstudio": false,
+      "risk_level": "write_files",
+      "requires_active_partition": false,
+      "requires_allowed_root": false,
+      "internal_only": true,
+      "version": "0.1.0"
+    },
+    {
       "tool_id": "mcp_sandbox_probe",
       "display_name": "Sandbox probe",
       "description": "Read-only local filesystem probe (stat, list_dir, read_head). Internal-only; path-validated against allowed roots.",

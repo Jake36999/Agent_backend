@@ -517,6 +517,58 @@ class ToolAdapters:
                 )
                 result["capability_receipt"] = compact_receipt(receipt)
                 return result
+            if tool_name == "mcp_integration_invoke":
+                from .integrations.policy import classify_integration_request
+                from .integrations.adapters import get_adapter, IntegrationError
+                from .capabilities.receipt import build_receipt, compact_receipt
+                integration_type = str(args.get("integration_type", ""))
+                action = str(args.get("action", ""))
+                params = args.get("params") or {}
+                if not isinstance(params, dict):
+                    raise AdapterFailure("params must be an object")
+                dry_run = bool(args.get("dry_run", True))
+                decision = classify_integration_request(
+                    integration_type=integration_type,
+                    action=action,
+                    dry_run=dry_run,
+                    profile="safe",
+                )
+                if not decision.allowed:
+                    receipt = build_receipt(
+                        capability_id=f"integration.{integration_type}",
+                        capability_type="integration",
+                        risk_tier=decision.risk_tier if decision.risk_tier in {"T1","T2","T3","T4"} else "T4",
+                        status="POLICY_BLOCK",
+                        authorized=False,
+                        network_access=True,
+                        writes_external_state=not dry_run,
+                        summary=decision.reason[:200],
+                    )
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": decision.reason,
+                        "artifacts": {},
+                        "integration_receipt": compact_receipt(receipt),
+                        "error": {"code": "integration_policy_block", "message": decision.reason},
+                    }
+                try:
+                    adapter = get_adapter(integration_type)
+                    result = adapter.invoke(action, params, dry_run=dry_run)
+                except IntegrationError as exc:
+                    raise AdapterFailure(str(exc)) from exc
+                receipt = build_receipt(
+                    capability_id=f"integration.{integration_type}",
+                    capability_type="integration",
+                    risk_tier=decision.risk_tier,
+                    status="OK",
+                    authorized=True,
+                    network_access=False,
+                    writes_external_state=False,
+                    summary=f"Dry-run {integration_type}.{action} completed; no external call made.",
+                )
+                result["integration_receipt"] = compact_receipt(receipt)
+                return result
             if tool_name == "mcp_sandbox_probe":
                 if self.sandbox is None:
                     raise AdapterFailure("sandbox adapter is not configured")
