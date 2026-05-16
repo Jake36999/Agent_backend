@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import Any
 
 # Feature flag — disabled by default.
 # Set ALETHEIA_ENABLE_REVIEW_DRAFTING=true to allow model-assisted review drafting.
@@ -27,3 +28,14 @@ REVIEW_DRAFTING_CAPABILITY = {
 def is_drafting_enabled() -> bool:
     """Return True only when ALETHEIA_ENABLE_REVIEW_DRAFTING is explicitly 'true'."""
     return os.getenv(_ENV_VAR, "").strip().lower() == "true"
+
+
+def can_draft_review(*, pipeline_id: str, lm_client: Any | None) -> dict:
+    """Return a decision dict indicating whether model-assisted drafting is permitted."""
+    if not is_drafting_enabled():
+        return {"allowed": False, "reason": "drafting_disabled"}
+    if lm_client is None:
+        return {"allowed": False, "reason": "no_lm_client"}
+    if pipeline_id != "code_review":
+        return {"allowed": False, "reason": "wrong_pipeline"}
+    return {"allowed": True, "reason": "authorized"}

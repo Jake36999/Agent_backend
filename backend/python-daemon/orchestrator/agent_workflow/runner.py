@@ -41,6 +41,7 @@ class WorkflowRunner:
         pipeline_compiler: PipelineCompiler | None = None,
         pipeline_loader: PipelineLoader | None = None,
         capability_registry: Any | None = None,
+        lm_client: Any | None = None,
     ) -> None:
         self.bridge_client = bridge_client
         self.tool_client = tool_client
@@ -57,6 +58,7 @@ class WorkflowRunner:
         self.pipeline_compiler = pipeline_compiler
         self.pipeline_loader = pipeline_loader
         self.capability_registry = capability_registry
+        self.lm_client = lm_client
 
     def run(
         self,
@@ -355,6 +357,64 @@ class WorkflowRunner:
         state.artifacts["code_review_report_index"] = json.dumps(
             build_report_index(manifest_entries),
         )[:2000]
+
+        self._attempt_draft_review(state, report, target_repo)
+
+    def _attempt_draft_review(
+        self,
+        state: WorkflowState,
+        report: Any,
+        target_repo: str,
+    ) -> None:
+        from orchestrator.code_review.drafting_policy import can_draft_review
+        from orchestrator.code_review.review_drafter import draft_review
+        from orchestrator.code_review.artifact_writer import persist_draft_review
+        from orchestrator.capabilities.receipt import build_receipt, compact_receipt
+
+        decision = can_draft_review(
+            pipeline_id=str(state.artifacts.get("pipeline_id", "")),
+            lm_client=self.lm_client,
+        )
+        receipt_status = "SKIPPED"
+        artifact_refs: list[str] = []
+        if decision["allowed"]:
+            _DISCLAIMER = "Draft model-assisted review — requires human verification\n\n"
+            raw = draft_review(
+                lm_client=self.lm_client,
+                architecture_overview=getattr(report, "architecture_overview_md", None) or "",
+                code_review_summary=getattr(report, "code_review_summary_md", None) or "",
+                heuristics_json=getattr(report, "heuristics_json", None) or "",
+                next_actions_yaml=getattr(report, "next_actions_yaml", None) or "",
+                target_repo=target_repo,
+            )
+            if raw is not None:
+                draft = _DISCLAIMER + raw
+                path = persist_draft_review(draft, state.run_id, self.state_dir)
+                state.artifacts["review_draft_md"] = path
+                artifact_refs = ["review_draft_md"]
+                receipt_status = "OK"
+            else:
+                receipt_status = "ERROR"
+
+        if receipt_status == "OK":
+            summary = "Generated bounded model-assisted review draft."
+        elif receipt_status == "SKIPPED":
+            summary = f"Review drafting skipped: {decision['reason']}."
+        else:
+            summary = "Review drafting failed: lm_client returned no content."
+
+        receipt = build_receipt(
+            capability_id="review_drafting.lm_assisted",
+            capability_type="adapter",
+            risk_tier="T3",
+            status=receipt_status,
+            authorized=decision["allowed"],
+            network_access=True,
+            writes_external_state=False,
+            artifact_refs=artifact_refs,
+            summary=summary,
+        )
+        state.artifacts["review_drafting_receipt"] = compact_receipt(receipt)
 
     def _attach_pipeline_receipt(
         self,
