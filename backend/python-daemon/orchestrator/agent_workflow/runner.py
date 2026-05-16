@@ -200,6 +200,8 @@ class WorkflowRunner:
                 self._attach_pipeline_receipt(state, plan, step_outputs)
                 if state.artifacts.get("pipeline_id") == "code_review":
                     self._attach_code_review_summary(state, step_outputs, target_repo)
+                if state.artifacts.get("pipeline_id") == "deep_research":
+                    self._attach_deep_research_report(state, step_outputs, target_repo)
                 state_path = state.save(self.state_dir)
                 state.phase = "FINAL"
                 state_path = state.save(self.state_dir)
@@ -212,6 +214,8 @@ class WorkflowRunner:
         self._attach_pipeline_receipt(state, plan, step_outputs)
         if state.artifacts.get("pipeline_id") == "code_review":
             self._attach_code_review_summary(state, step_outputs, target_repo)
+        if state.artifacts.get("pipeline_id") == "deep_research":
+            self._attach_deep_research_report(state, step_outputs, target_repo)
         state_path = state.save(self.state_dir)
         state.phase = "FINAL"
         state_path = state.save(self.state_dir)
@@ -359,6 +363,29 @@ class WorkflowRunner:
         )[:2000]
 
         self._attempt_draft_review(state, report, target_repo)
+
+    def _attach_deep_research_report(
+        self,
+        state: WorkflowState,
+        step_outputs: dict[str, dict[str, Any]],
+        target_repo: str,
+    ) -> None:
+        import json
+        from orchestrator.deep_research.artifact_writer import build_research_index, persist_deep_research_artifacts
+        from orchestrator.deep_research.report_builder import build_deep_research_report
+        pipeline_receipt = state.artifacts.get("pipeline_receipt")
+        report = build_deep_research_report(
+            objective=state.goal,
+            target_repo=target_repo,
+            step_outputs=step_outputs,
+            pipeline_receipt=pipeline_receipt if isinstance(pipeline_receipt, dict) else None,
+        )
+        refs, manifest_entries = persist_deep_research_artifacts(report, state.run_id, self.state_dir)
+        for key, path in refs.items():
+            state.artifacts[key] = path
+        state.artifacts["research_report_index"] = json.dumps(
+            build_research_index(manifest_entries),
+        )[:2000]
 
     def _attempt_draft_review(
         self,

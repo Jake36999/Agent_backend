@@ -44,7 +44,7 @@ def _parse_arg_value(v: Any) -> Any:
         return {k: _parse_arg_value(inner) for k, inner in v.items()}
     return v
 
-ACTIVE_PIPELINES: frozenset[str] = frozenset({"investigation", "patch_plan", "code_review"})
+ACTIVE_PIPELINES: frozenset[str] = frozenset({"investigation", "patch_plan", "code_review", "deep_research"})
 
 RESERVED_PIPELINE_IDS: frozenset[str] = frozenset({
     "mcp_pipeline_run",

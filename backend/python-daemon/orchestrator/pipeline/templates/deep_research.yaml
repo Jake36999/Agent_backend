@@ -1,0 +1,52 @@
+pipeline_id: deep_research
+version: "0.1.0"
+name: "Deep Research"
+description: >
+  Multi-pass read-only codebase investigation producing a bounded research
+  report with deterministic citations. No files modified, no external calls.
+max_steps: 8
+variables:
+  profile: "safe"
+  max_files: "500"
+  max_edges: "500"
+  max_chars: "8000"
+
+steps:
+  - step_id: repo_context
+    tool_name: mcp_code_intelligence
+    description: "Collect repository context and architecture overview"
+    args:
+      target_repo: "${target_repo}"
+      mode: "repo_context"
+      max_files: "${max_files}"
+      max_chars: "${max_chars}"
+
+  - step_id: code_map
+    tool_name: mcp_code_intelligence
+    description: "Build detailed code map for source discovery"
+    depends_on: [repo_context]
+    args:
+      target_repo: "${target_repo}"
+      mode: "code_map"
+      max_files: "${max_files}"
+      max_chars: "${max_chars}"
+
+  - step_id: dependency_graph
+    tool_name: mcp_code_intelligence
+    description: "Collect inter-module dependency relationships"
+    depends_on: [repo_context]
+    args:
+      target_repo: "${target_repo}"
+      mode: "dependency_graph"
+      max_files: "${max_files}"
+      max_edges: "${max_edges}"
+
+  - step_id: mermaid
+    tool_name: mcp_code_intelligence
+    description: "Render dependency topology as Mermaid diagram"
+    depends_on: [dependency_graph]
+    args:
+      target_repo: "${target_repo}"
+      mode: "mermaid"
+      max_files: "${max_files}"
+      max_edges: "${max_edges}"
