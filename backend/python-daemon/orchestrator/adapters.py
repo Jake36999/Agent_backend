@@ -590,17 +590,55 @@ class ToolAdapters:
                     max_depth=max_depth,
                 )
             if tool_name == "mcp_sandbox_probe":
-                if self.sandbox is None:
-                    raise AdapterFailure("sandbox adapter is not configured")
+                from .sandbox.policy import classify_sandbox_request
+                from .capabilities.receipt import build_receipt, compact_receipt
                 operation = str(args.get("operation", ""))
                 path = str(args.get("path", ""))
+                sandbox_decision = classify_sandbox_request(
+                    "mcp_sandbox_probe", args, profile="safe"
+                )
+                if not sandbox_decision.allowed:
+                    receipt = build_receipt(
+                        capability_id="sandbox.local_readonly_probe",
+                        capability_type="sandbox",
+                        risk_tier=sandbox_decision.risk_tier,
+                        status="POLICY_BLOCK",
+                        authorized=False,
+                        network_access=False,
+                        writes_external_state=False,
+                        summary=sandbox_decision.reason[:200],
+                    )
+                    return {
+                        "ok": False,
+                        "status": "POLICY_BLOCK",
+                        "summary": sandbox_decision.reason,
+                        "artifacts": {},
+                        "error": {"code": "sandbox_policy_block", "message": sandbox_decision.reason},
+                        "capability_receipt": compact_receipt(receipt),
+                    }
+                if self.sandbox is None:
+                    raise AdapterFailure("sandbox adapter is not configured")
                 if operation == "stat":
-                    return self.sandbox.stat(path)
-                if operation == "list_dir":
-                    return self.sandbox.list_dir(path, int(args.get("max_entries", 200)))
-                if operation == "read_head":
-                    return self.sandbox.read_head(path, int(args.get("max_bytes", 4096)))
-                raise AdapterFailure(f"unknown sandbox operation: {operation!r}")
+                    result = self.sandbox.stat(path)
+                elif operation == "list_dir":
+                    result = self.sandbox.list_dir(path, int(args.get("max_entries", 200)))
+                elif operation == "read_head":
+                    result = self.sandbox.read_head(path, int(args.get("max_bytes", 4096)))
+                else:
+                    raise AdapterFailure(f"unknown sandbox operation: {operation!r}")
+                probe_status = "OK" if result.get("ok", True) else "ERROR"
+                receipt = build_receipt(
+                    capability_id="sandbox.local_readonly_probe",
+                    capability_type="sandbox",
+                    risk_tier="T1",
+                    status=probe_status,
+                    authorized=True,
+                    network_access=False,
+                    writes_external_state=False,
+                    summary=f"Executed read-only sandbox probe: {operation}.",
+                )
+                result["capability_receipt"] = compact_receipt(receipt)
+                return result
             raise AdapterFailure(f"unknown MCP tool: {tool_name}")
         except KeyError as exc:
             raise AdapterFailure(f"missing required argument: {exc}") from exc

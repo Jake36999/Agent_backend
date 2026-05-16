@@ -3,17 +3,20 @@ from __future__ import annotations
 from typing import Any
 
 from .collectors import (
+    ConfiguredWebCollector,
     LocalArtifactSourceCollector,
     SourceCollector,
     StaticSourceCollector,
     WebSourceCollector,
 )
 from .models import SourceRecord
+from .provider_policy import get_allowed_domains, is_web_research_enabled
+from .providers import ConfiguredWebProvider
 from .report_builder import build_research_report
 
 _MAX_SOURCES_DEFAULT = 12
 _MAX_SOURCES_CAP = 50
-_VALID_MODES = frozenset({"static", "local", "web_stub"})
+_VALID_MODES = frozenset({"static", "local", "web_stub", "web_configured"})
 
 
 def _parse_sources(raw: Any) -> list[dict[str, Any]]:
@@ -32,6 +35,11 @@ def _pick_collector(
         return StaticSourceCollector(sources_raw), False
     if source_mode == "local":
         return LocalArtifactSourceCollector(target_repo), False
+    if source_mode == "web_configured":
+        if not is_web_research_enabled():
+            return WebSourceCollector(), True
+        provider = ConfiguredWebProvider(get_allowed_domains())
+        return ConfiguredWebCollector(sources_raw, provider), False
     # web_stub — always policy-blocked
     return WebSourceCollector(), True
 
@@ -83,6 +91,12 @@ def invoke_deep_research(
     )
 
     if is_policy_blocked:
+        if source_mode == "web_configured":
+            block_summary = "web_configured requires ALETHEIA_ENABLE_WEB_RESEARCH=true."
+            block_message = "Web research is disabled; set ALETHEIA_ENABLE_WEB_RESEARCH=true to enable."
+        else:
+            block_summary = "Web source collection is not yet enabled; use source_mode='static' or 'local'."
+            block_message = "source_mode='web_stub' is not yet enabled in this release."
         receipt = build_receipt(
             capability_id="research.deep_research",
             capability_type="research",
@@ -91,16 +105,16 @@ def invoke_deep_research(
             authorized=False,
             network_access=False,
             writes_external_state=False,
-            summary="Web source collection is not yet enabled; use source_mode='static' or 'local'.",
+            summary=block_summary,
         )
         return {
             "ok": False,
             "status": "POLICY_BLOCK",
-            "summary": "web_stub mode is not configured; no live web access is available.",
+            "summary": block_summary,
             "artifacts": {},
             "error": {
                 "code": "web_not_configured",
-                "message": "source_mode='web_stub' is not yet enabled in this release.",
+                "message": block_message,
             },
             "capability_receipt": compact_receipt(receipt),
         }

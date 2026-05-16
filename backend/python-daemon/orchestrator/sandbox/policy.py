@@ -35,6 +35,8 @@ _KNOWN_RISK_LEVELS: dict[str, str] = {
     "mcp_set_active_partition":         "write_memory",
     "mcp_set_active_project_manual":    "admin",
     "mcp_verify_integrity":             "read_only",
+    "mcp_deep_research":                "read_only",
+    "mcp_integration_invoke":           "write_files",
 }
 
 _RISK_TIER: dict[str, str] = {
